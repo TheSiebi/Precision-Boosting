@@ -1,6 +1,7 @@
 src/machine.h
 build/*
 timings/*
+plotting_venv
 
 # Prerequisites
 *.d

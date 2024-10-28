@@ -5,7 +5,7 @@ mkdir -p $folder
 make
 
 ./build/main -p $folder
-#source ../.venv/bin/activate
-#python3 utils/plotting.py --input_folder $folder
-#python3 utils/plotting.py --input_folder $folder --compare
-#python3 utils/plotting.py --input_folder $folder --speedup
+
+python3 scripts/plotting.py --input_folder $folder
+python3 scripts/plotting.py --input_folder $folder --compare
+python3 scripts/plotting.py --input_folder $folder --speedup

@@ -16,6 +16,7 @@ cJSON* measurement_configuration_to_json(struct measurementConfiguration *conf) 
     cJSON_AddStringToObject(json, "timeStamp", conf->timeStamp);
     cJSON_AddStringToObject(json, "flags", conf->flags);
     cJSON_AddStringToObject(json, "cpu model", conf->cpuModel);
+    cJSON_AddStringToObject(json, "gpu model", conf->gpuModel);
     cJSON_AddStringToObject(json, "function name", conf->targetFunction);
 
     return json;
@@ -104,14 +105,15 @@ void timeFunction(struct matmul_variant *function, char *path) {
     printf("Time %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 10;
+    int powerOfMaxSize = 8;
     int powerOfMinSize = 3;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int iterationsPerConfig = 5;
 
     struct measurementConfiguration runConfig = {
         .targetFunction = function->name,
-        .cpuModel = CPU
+        .cpuModel = CPU,
+        .gpuModel = GPU
     };
 
     double *timings = calloc(numSizes * iterationsPerConfig, sizeof(*timings));
