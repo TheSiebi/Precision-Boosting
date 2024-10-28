@@ -24,11 +24,6 @@ def load_json(file_path: str) -> dict:
         data = json.load(f)
     return data
 
-def median(lst):
-    n = len(lst)
-    s = sorted(lst)
-    return (s[n//2-1]/2.0+s[n//2]/2.0, s[n//2])[n % 2] if n else None
-
 
 def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
     """
