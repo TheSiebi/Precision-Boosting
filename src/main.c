@@ -12,6 +12,11 @@ struct matmul_variant variants[] =
         .function = matmul_v0,
         .name = "matmul_v0",
         .description = "straightforward triple for loop implementation",
+    },
+    {
+        .function = matmul_cuda_v0,
+        .name = "matmul_cuda_v0",
+        .description = "straightforward triple for loop implementation running on the GPU",
     }
 };
 
