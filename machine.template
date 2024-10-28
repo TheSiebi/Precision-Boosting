@@ -1,0 +1,8 @@
+#ifndef MACHINE_H
+#define MACHINE_H
+
+#define FREQUENCY 3.693e9
+#define CPU "AMD Ryzen 9 7900"
+#define GPU "Nvidia GTX 1070"
+
+#endif //MACHINE_H

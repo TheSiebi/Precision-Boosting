@@ -1,3 +1,7 @@
+src/machine.h
+build/*
+timings/*
+
 # Prerequisites
 *.d
 
