@@ -39,8 +39,8 @@ def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
         print("Plotting error: empty timings")
         exit(1)
 
-    # Convert timings from milliseconds to seconds
-    timings_ms = np.array(timings) / 1000.0
+    # Convert timings from nanoseconds to milliseconds
+    timings_ms = np.array(timings) / 1e6
 
     # Calculate  metrics
     median_timings = np.median(timings_ms)

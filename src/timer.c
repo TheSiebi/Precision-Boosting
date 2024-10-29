@@ -9,6 +9,8 @@
 #include "machine.h"
 #include "../lib/cjson/cJSON.h"
 
+#define NS_PER_SECOND 1e9
+
 cJSON* measurement_configuration_to_json(struct measurementConfiguration *conf) {
     cJSON *json = cJSON_CreateObject();
     if (!json) return NULL;
@@ -66,7 +68,22 @@ void write_measurement_to_file(struct measurement *m, const char *path, const ch
     free(string);
 }
 
-
+// Taken from https://stackoverflow.com/questions/53708076/what-is-the-proper-way-to-use-clock-gettime
+void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
+{
+    td->tv_nsec = t2.tv_nsec - t1.tv_nsec;
+    td->tv_sec  = t2.tv_sec - t1.tv_sec;
+    if (td->tv_sec > 0 && td->tv_nsec < 0)
+    {
+        td->tv_nsec += NS_PER_SECOND;
+        td->tv_sec--;
+    }
+    else if (td->tv_sec < 0 && td->tv_nsec > 0)
+    {
+        td->tv_nsec -= NS_PER_SECOND;
+        td->tv_sec++;
+    }
+}
 
 void timeRun(double *timings, int iterations, int M, int K, int N, MatMul func)
 {
@@ -88,11 +105,12 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul func)
             B[j] = (double) rand() / (double) RAND_MAX;
         }
 
-        struct timespec start, end;
+        struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         func(A, B, C, M, K, N);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        timings[i] = (double) (end.tv_nsec - start.tv_nsec);
+        sub_timespec(start, end, &delta);
+        timings[i] = (double) delta.tv_sec*NS_PER_SECOND + delta.tv_nsec;
     }
 
     free(A);
