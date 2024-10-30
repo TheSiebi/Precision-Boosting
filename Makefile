@@ -8,7 +8,7 @@ CUDA_FLAGS= -g
 
 CC=gcc
 
-OBJ_FILES=build/timer.o build/cJSON.o build/matmul_v0.o build/matmul_cuda_v0.o
+OBJ_FILES=build/timer.o build/cJSON.o build/matmul_v0.o build/matmul_cuda_v0.o build/split_v0.o
 
 
 .PHONY: $(OBJ_FILES)
@@ -32,6 +32,9 @@ build/matmul_v0.o:
 
 build/matmul_cuda_v0.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
+
+build/split_v0.o:
+	nvcc $(CUDA_FLAGS) -c src/impls/split_v0.cu -o $@
 
 run:
 	./build/main

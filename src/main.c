@@ -3,6 +3,7 @@
 #include "matmul.h"
 #include "timer.h"
 #include "math.h"
+#include "split.h"
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -39,6 +40,10 @@ void testCorrectness(struct matmul_variant *function) {
     for (int j = 0; j < K*N; j++) {
         B[j] = (double) rand() / (double) RAND_MAX;
     }
+
+    // void *A16 = malloc(M * K * 2);
+    // void *dA16 = malloc(M * K * 2);
+    // split_v0(A, A16, dA16, M, K);
 
     // Use matmul_v0 as a reference implementation
     matmul_v0(A, B, C_ref, M, K, N);
