@@ -8,7 +8,8 @@ CUDA_FLAGS= -g
 
 CC=gcc
 
-OBJ_FILES=build/timer.o build/cJSON.o build/matmul_v0.o build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
+OBJ_FILES=build/profiler.o build/timer.o build/cJSON.o 
+OBJ_FILES+=build/matmul_v0.o build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
 
 
 .PHONY: $(OBJ_FILES)
@@ -20,6 +21,9 @@ build: prepareBuild $(OBJ_FILES)
 prepareBuild:
 	mkdir -p build
 	cp -n -T machine.template src/machine.h
+
+build/profiler.o: src/profiler.c
+	$(CC) $(OPT_FLAGS) -c src/profiler.c -o $@
 
 build/timer.o: src/timer.c
 	$(CC) $(OPT_FLAGS) -c src/timer.c -o $@

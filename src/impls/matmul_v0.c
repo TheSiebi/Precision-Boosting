@@ -1,6 +1,8 @@
-#include "../matmul.h"
+#include "../profiler.h"
 
-void matmul_v0(double *A, double *B, double *C, int M, int K, int N) {
+void matmul_v0(double *A, double *B, double *C, int M, int K, int N) 
+{
+    PROFILE_FUNCTION_START();
     for (int i = 0; i < M; i++) {
         for (int j = 0; j < N; j++) {
             double c_ij = 0.0;
@@ -10,4 +12,5 @@ void matmul_v0(double *A, double *B, double *C, int M, int K, int N) {
             C[i*N + j] = c_ij;
         }
     }
+    PROFILE_FUNCTION_END();
 }

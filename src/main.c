@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "matmul.h"
 #include "timer.h"
+#include "profiler.h"
 #include "math.h"
 #include "split.h"
 
@@ -27,7 +28,7 @@ void testCorrectness(struct matmul_variant *function) {
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
     int M, K, N;
-    M = K = N = 10;
+    M = K = N = 32;
     double* A = (double *) malloc(M * K * sizeof(double));
     double* B = (double *) malloc(K * N * sizeof(double));
     double* C = (double *) malloc(M * N * sizeof(double));
@@ -71,6 +72,26 @@ void testCorrectness(struct matmul_variant *function) {
     free(C_ref);
 }
 
+void profile(struct matmul_variant variant, int warmup, int iterations, int M, int K, int N)
+{
+    double *A = calloc(M * K, sizeof(*A));
+    double *B = calloc(K * N, sizeof(*B));
+    double *C = calloc(M * N, sizeof(*C));
+
+    profiler_reset();
+    for(int i = 0; i < warmup; i++)
+        variant.function(A, B, C, M, K, N);
+    profiler_reset();
+    for(int i = 0; i < iterations; i++)
+        variant.function(A, B, C, M, K, N);
+    printf("\n----Profiling %s------\n", variant.name);
+    profiler_segments_print();
+
+    free(A);
+    free(B);
+    free(C);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2)
@@ -79,6 +100,8 @@ int main(int argc, char *argv[])
         {
             testCorrectness(&variants[i]);
         }
+        profile(variants[0], 0, 1, 1024, 1024, 1024);
+        profile(variants[1], 0, 1, 8192, 8192, 8192);
     }
     else
     {

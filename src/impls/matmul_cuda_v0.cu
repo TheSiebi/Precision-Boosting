@@ -1,19 +1,22 @@
+#include <assert.h>
 #include <cuda.h>
+#include <cuda_device_runtime_api.h>
 #include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
 #include <driver_types.h>
 
+#include "../profiler.h"
 
 __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, int K, int N) 
 {
-    for (int i = 0; i < M; i++) {
-        for (int j = 0; j < N; j++) {
-            double c_ij = 0.0;
-            for (int k = 0; k < K; k++) {
-                c_ij += A[i*K + k] * B[k*N + j];
-            }
-            C[i*N + j] = c_ij;
-        }
+    int m = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = blockIdx.y * blockDim.y + threadIdx.y;
+    double result = 0.0;
+    for (int k = 0; k < K; k++) 
+    {
+        result += A[m*K + k] * B[k*N + n];
     }
+    C[m*N + n] = result;
 }
 
 extern "C"
@@ -22,6 +25,11 @@ extern "C"
 
 void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N) 
 {
+    assert((M & 0xF) == 0);
+    assert((K & 0xF) == 0);
+    assert((N & 0xF) == 0);
+
+    PROFILE_FUNCTION_SEGMENT_START("allocate");
     size_t ASize = M * K * sizeof(double);
     size_t BSize = K * N * sizeof(double);
     size_t CSize = M * N * sizeof(double);
@@ -31,15 +39,24 @@ void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     cudaMalloc(&deviceB, BSize);
     cudaMalloc(&deviceC, CSize);
 
+    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
     cudaMemcpy(deviceA, A, ASize, cudaMemcpyHostToDevice);
     cudaMemcpy(deviceB, B, BSize, cudaMemcpyHostToDevice);
 
-    matmul_cuda_v0_kernel<<<1, 1>>>(deviceA, deviceB, deviceC, M, K, N);
+    PROFILE_SEGMENTS_SWITCH("matmul");
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
+    matmul_cuda_v0_kernel<<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
 
+    cudaDeviceSynchronize();
+
+    PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     cudaMemcpy(C, deviceC, CSize, cudaMemcpyDeviceToHost);
 
+    PROFILE_SEGMENTS_SWITCH("free");
     cudaFree(deviceA);
     cudaFree(deviceB);
     cudaFree(deviceC);
+    PROFILE_SEGMENT_FUNCTION_END();
 }
 }
