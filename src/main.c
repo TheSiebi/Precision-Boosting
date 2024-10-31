@@ -5,10 +5,11 @@
 #include "profiler.h"
 #include "math.h"
 #include "split.h"
+#include "merge_accumulate.h"
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
-struct matmul_variant variants[] =
+struct matmul_variant matmulVariants[] =
 {
     {
         .function = matmul_v0,
@@ -22,7 +23,27 @@ struct matmul_variant variants[] =
     }
 };
 
-void testCorrectness(struct matmul_variant *function) {
+struct split_variant splitVariants[] =
+{
+    {
+        .function = split_v0,
+        .functionf = splitf_v0,
+        .invFunction = merge_v0,
+        .invFunctionf = mergef_v0,
+        .name = "split_v0",
+        .description = "straightforward cpu implementation of Markidis two way split",
+    },
+    {
+        .function = split_Ootomo_v0,
+        .functionf = splitf_Ootomo_v0,
+        .invFunction = merge_Ootomo_v0,
+        .invFunctionf = mergef_Ootomo_v0,
+        .name = "split_Ootomo_v0",
+        .description = "straightforward cpu implementation of Ootomo two way split",
+    }
+};
+
+void testMatmulCorrectness(struct matmul_variant *function) {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
@@ -96,18 +117,18 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        for(size_t i = 0; i < ARRAY_COUNT(variants); i++)
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants); i++)
         {
-            testCorrectness(&variants[i]);
+            testMatmulCorrectness(&matmulVariants[i]);
         }
-        profile(variants[0], 0, 1, 1024, 1024, 1024);
-        profile(variants[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
+        profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
     }
     else
     {
-        for(size_t i = 0; i < ARRAY_COUNT(variants); i++)
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants); i++)
         {
-            timeFunction(&variants[i], argv[2]);
+            timeFunction(&matmulVariants[i], argv[2]);
         }
     }
     return 0;

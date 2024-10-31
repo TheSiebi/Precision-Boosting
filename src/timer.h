@@ -15,6 +15,21 @@ struct matmul_variant
     const char *description;
 };
 
+typedef void (*Split)(const double *A, void *A16, void *dA16, int M, int N);
+typedef void (*Merge)(const void *A16, const void *dA16, double* merged, int M, int N);
+typedef void (*Splitf)(const float *A, void *A16, void *dA16, int M, int N);
+typedef void (*Mergef)(const void *A16, const void *dA16, float* merged, int M, int N);
+
+struct split_variant
+{
+    Split function;
+    Splitf functionf;
+    Merge invFunction;
+    Mergef invFunctionf;
+    const char *name;
+    const char *description;
+};
+
 
 struct measurementConfiguration
 {
