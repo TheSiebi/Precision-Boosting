@@ -43,6 +43,96 @@ struct split_variant splitVariants[] =
     }
 };
 
+void randomFillf(float *M, int N)
+{
+    for (int j = 0; j < N; j++) {
+        M[j] =  (float) rand() / (float) RAND_MAX;
+    }
+}
+
+void randomFill(double *M, int N)
+{
+    for (int j = 0; j < N; j++) {
+        M[j] = (double) rand() / (double) RAND_MAX;
+    }
+}
+
+bool isEqual(const double *A, const double *B, int N)
+{
+    double epsilon = 0.001;
+    _Bool fail = false;
+    for (int i = 0; i < N; i++) {
+        double err = fabs(A[i] - B[i]);
+        if (err > epsilon) {
+            fail = true;
+            break;
+        }
+    }
+
+    return !fail;
+}
+
+bool isEqualf(const float *A, const float *B, int N)
+{
+    float epsilon = 0.001;
+    _Bool fail = false;
+    for (int i = 0; i < N; i++) {
+        float err = fabsf(A[i] - B[i]);
+        if (err > epsilon) {
+            fail = true;
+            break;
+        }
+    }
+
+    return !fail;
+}
+
+void testSplitCorrectness(struct split_variant *function)
+{
+    int M, N;
+    M = N = 32;
+    double* A = (double *) malloc(M * N * sizeof(double));
+    float* Af = (float *) malloc(M * N * sizeof(float));
+    double* A_merged = (double *) malloc(M * N * sizeof(double));
+    float* Af_merged = (float *) malloc(M * N * sizeof(float));
+    void *A16 = malloc(M * N * 2);
+    void *dA16 = malloc(M * N * 2);
+    
+    // Populate matrices with random values between 0 and 1
+    randomFill(A, M*N);
+    
+    // f_inv(f(x)) ~= identity
+    function->function(A, A16, dA16, M, N);
+    function->invFunction(A16, dA16, A_merged, M, N);
+    _Bool fail = false;
+    if (!isEqual(A, A_merged, M*N)) {
+        printf("FAILURE: merging the output of %s (double variant) is not identical to input!\n", function->name);
+        fail = true;
+    } 
+
+    // Populate matrices with random values between 0 and 1
+    randomFillf(Af, M*N);
+    
+    // f_inv(f(x)) ~= identity
+    function->functionf(Af, A16, dA16, M, N);
+    function->invFunctionf(A16, dA16, Af_merged, M, N);
+    if (!isEqualf(Af, Af_merged, M*N)) {
+        printf("FAILURE: merging the output of %s (float variant) is not identical to input!\n", function->name);
+        fail = true;
+    } 
+
+    if (!fail) {
+        printf("SUCCESS: %s passed correctness tests!\n", function->name);
+    }
+
+    free(A);
+    free(Af);
+    free(A_merged);
+    free(Af_merged);
+    free(A16);
+    free(dA16);
+}
+
 void testMatmulCorrectness(struct matmul_variant *function) {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -56,32 +146,14 @@ void testMatmulCorrectness(struct matmul_variant *function) {
     double* C_ref = (double *) malloc(M * N * sizeof(double));
 
     // Populate matrices with random values between 0 and 1
-    for (int j = 0; j < M*K; j++) {
-        A[j] = (double) rand() / (double) RAND_MAX;
-    }
-    for (int j = 0; j < K*N; j++) {
-        B[j] = (double) rand() / (double) RAND_MAX;
-    }
-
-    // void *A16 = malloc(M * K * 2);
-    // void *dA16 = malloc(M * K * 2);
-    // split_v0(A, A16, dA16, M, K);
+    randomFill(A, M*K);
+    randomFill(B, K*N);
 
     // Use matmul_v0 as a reference implementation
     matmul_v0(A, B, C_ref, M, K, N);
     function->function(A, B, C, M, K, N);
-
-    double epsilon = 0.001;
-    _Bool fail = false;
-    for (int i = 0; i < M * N; i++) {
-        double err = fabs(C[i] - C_ref[i]);
-        if (err > epsilon) {
-            fail = true;
-            break;
-        }
-    }
     
-    if (fail) {
+    if (!isEqual(C, C_ref, M*N)) {
         printf("FAILURE: %s is NOT identical to the reference\n", function->name);
     } else {
         printf("SUCCESS: %s passed correctness tests!\n", function->name);
@@ -121,8 +193,12 @@ int main(int argc, char *argv[])
         {
             testMatmulCorrectness(&matmulVariants[i]);
         }
-        profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
-        profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
+        for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
+        {
+            testSplitCorrectness(&splitVariants[i]);
+        }
+        //profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
+        //profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
     }
     else
     {

@@ -13,10 +13,10 @@ void split_v0(const double *A, void *A16, void *dA16, int M, int N)
         double reconstructed = (double) __half2float(_A16[i]);
         _dA16[i] = __double2half(A[i] - reconstructed);
         
-        printf("A[%d] = %f\n", i, A[i]);
-        printf("A16[%d] = %f\n", i, __half2float(_A16[i]));
-        printf("dA16[%d] = %f\n", i, __half2float(_dA16[i]));
-        printf("A16[%d] + dA16[%d] - A[%d] = %f\n", i, i, i, ((double) __half2float(_A16[i]) + (double) __half2float(_dA16[i])) - A[i] );
+        // printf("A[%d] = %f\n", i, A[i]);
+        // printf("A16[%d] = %f\n", i, __half2float(_A16[i]));
+        // printf("dA16[%d] = %f\n", i, __half2float(_dA16[i]));
+        // printf("A16[%d] + dA16[%d] - A[%d] = %f\n", i, i, i, ((double) __half2float(_A16[i]) + (double) __half2float(_dA16[i])) - A[i] );
     }    
 }
 
