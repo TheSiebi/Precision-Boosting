@@ -10,8 +10,8 @@ CUDA_FLAGS= -g
 CC=gcc
 
 OBJ_FILES=build/profiler.o build/timer.o build/cJSON.o 
-OBJ_FILES+=build/matmul_v0.o build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
-OBJ_FILES+=build/matmul_cuda_v1.o
+OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
+OBJ_FILES+=build/matmul_simpleMarkidis_v0.o
 
 
 .PHONY: $(OBJ_FILES)
@@ -33,11 +33,11 @@ build/timer.o: src/timer.cpp
 build/cJSON.o: lib/cjson/cJSON.c
 	$(CC) $(BASE_FLAGS) -O3 -c lib/cjson/cJSON.c -o $@
 	
-build/matmul_v0.o:
-	$(CC) $(OPT_FLAGS) -c src/impls/matmul_v0.cpp -o $@
-
 build/matmul_cuda_v0.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
+
+build/matmul_simpleMarkidis_v0.o:
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleMarkidis_v0.cu -o $@
 
 build/matmul_cuda_v1.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v1.cu -o $@

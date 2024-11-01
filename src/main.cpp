@@ -9,23 +9,22 @@
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
-matmul_variant<double> matmulVariants[] =
+matmul_variant<float> matmulVariants32[] =
 {
     {
-        .function = matmul_v0,
-        .name = "matmul_v0",
-        .description = "straightforward triple for loop implementation",
+        .function = matmul_simpleMarkidis_v0,
+        .name = "Simple Markidis v0",
+        .description = "Markidis implementation uses 4 matmul dispatches and summs the result on the CPU",
     },
+};
+
+matmul_variant<double> matmulVariants64[] =
+{
     {
         .function = matmul_cuda_v0,
         .name = "matmul_cuda_v0",
         .description = "straightforward triple for loop implementation running on the GPU",
     },
-    {
-        .function = matmul_cuda_v1,
-        .name = "matmul_cuda_v1",
-        .description = "straightforward triple for loop implementation running on the GPU",
-    }
 };
 
 struct split_variant splitVariants[] =
@@ -48,6 +47,20 @@ struct split_variant splitVariants[] =
     }
 };
 
+template<class T>
+void referenceMatmul(T *A, T *B, T *C, int M, int K, int N) 
+{
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < N; j++) {
+            T c_ij = 0.0;
+            for (int k = 0; k < K; k++) {
+                c_ij += A[i*K + k] * B[k*N + j];
+            }
+            C[i*N + j] = c_ij;
+        }
+    }
+}
+
 void randomFillf(float *M, int N)
 {
     for (int j = 0; j < N; j++) {
@@ -55,14 +68,16 @@ void randomFillf(float *M, int N)
     }
 }
 
-void randomFill(double *M, int N)
+template<class T>
+void randomFill(T *M, int N)
 {
     for (int j = 0; j < N; j++) {
-        M[j] = (double) rand() / (double) RAND_MAX;
+        M[j] = (T) (rand() / (double) RAND_MAX);
     }
 }
 
-bool isEqual(const double *A, const double *B, int N)
+template<class T>
+bool isEqual(T *A, T *B, int N)
 {
     double epsilon = 0.001;
     _Bool fail = false;
@@ -156,7 +171,7 @@ void testMatmulCorrectness(matmul_variant<T> *function) {
     randomFill(B, K*N);
 
     // Use matmul_v0 as a reference implementation
-    matmul_v0(A, B, C_ref, M, K, N);
+    referenceMatmul(A, B, C_ref, M, K, N);
     function->function(A, B, C, M, K, N);
     
     if (!isEqual(C, C_ref, M*N)) {
@@ -196,22 +211,26 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants); i++)
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {
-            testMatmulCorrectness(&matmulVariants[i]);
+            testMatmulCorrectness(&matmulVariants32[i]);
+        }
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
+        {
+            testMatmulCorrectness(&matmulVariants64[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
             testSplitCorrectness(&splitVariants[i]);
         }
-        profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
-        profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
+        profile(matmulVariants32[0], 0, 1, 4096, 4096, 4096);
     }
     else
     {
-        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants); i++)
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            timeFunction(&matmulVariants[i], argv[2]);
+            timeFunction(&matmulVariants64[i], argv[2]);
         }
     }
     return 0;
