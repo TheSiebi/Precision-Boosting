@@ -67,8 +67,16 @@ extern struct profile_segment *profile_segment_current;
 
 #define PROFILE_FUNCTION_END() PROFILE_SEGMENT_END()
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void profiler_reset();
 void profiler_segments_print();
+
+#ifdef __cplusplus
+}
+#endif
 
 static inline void profile_segment_start(struct profile_segment *segment)
 {

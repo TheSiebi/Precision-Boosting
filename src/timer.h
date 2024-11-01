@@ -7,10 +7,13 @@
 #include <time.h>
 #include <stdbool.h>
 
-typedef void (*MatMul)(double *A, double *B, double *C, int M, int K, int N);
+template<class T>
+using MatMul = void (*)(T *A, T *B, T *C, int M, int K, int N);
+
+template<class T>
 struct matmul_variant
 {
-    MatMul function;
+    MatMul<T> function;
     const char *name;
     const char *description;
 };
@@ -53,8 +56,12 @@ struct measurement
     struct measurementConfiguration configuration;
     struct run *runs;
 };
-void timeRun(double *timings, int iterations, int M, int K, int N, MatMul func);
-void timeFunction(struct matmul_variant *function, char *path);
+
+template<class T>
+void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func);
+
+template<class T>
+void timeFunction(struct matmul_variant<T> *function, char *path);
 
 
 #endif // FUNCTIONTIMER_H

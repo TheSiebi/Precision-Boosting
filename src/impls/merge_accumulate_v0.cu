@@ -1,8 +1,5 @@
 #include <cuda_fp16.h>
 
-extern "C"
-{
-
 #include "../merge_accumulate.h"
 
 void merge_v0(const void *A16, const void *dA16, double* merged, int M, int N)
@@ -50,4 +47,3 @@ void accumulate_Ootomo_v0(
         C[i] = A16B16[i] + (dA16B16[i] + A16dB16[i]) / 2048.f; // 2^11
 }
 
-}

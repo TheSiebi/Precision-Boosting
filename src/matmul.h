@@ -10,5 +10,6 @@ void matmul_v0(double *A, double *B, double *C, int M, int K, int N);
 // void matmul_v3(double *A, double *B, double *C, int M, int K, int N);
 
 void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N);
+void matmul_cuda_v1(double *A, double *B, double *C, int M, int K, int N);
 
 #endif // MATMUL_H

@@ -1,7 +1,5 @@
 #include <cuda_fp16.h>
 
-extern "C"
-{
 #include "../split.h"
 
 void split_v0(const double *A, void *A16, void *dA16, int M, int N)
@@ -51,6 +49,5 @@ void splitf_Ootomo_v0(const float *A, void *A16, void *dA16, int M, int N)
         float reconstructed = __half2float(_A16[i]);
         _dA16[i] = __float2half((A[i] - reconstructed) * 2048.0);
     }
-}
 }
 

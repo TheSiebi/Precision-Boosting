@@ -85,24 +85,25 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
     }
 }
 
-void timeRun(double *timings, int iterations, int M, int K, int N, MatMul func)
+template<class T>
+void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
-    double* A = (double *) malloc(M * K * sizeof(double));
-    double* B = (double *) malloc(K * N * sizeof(double));
-    double* C = (double *) malloc(M * N * sizeof(double));
+    T* A = (T *) malloc(M * K * sizeof(T));
+    T* B = (T *) malloc(K * N * sizeof(T));
+    T* C = (T *) malloc(M * N * sizeof(T));
 
     for(int i = 0; i < iterations; i++)
     {
         // Populate matrices with random values between 0 and 1
         for (int j = 0; j < M*K; j++) {
-            A[j] = (double) rand() / (double) RAND_MAX;
+            A[j] = (T) (rand() / (double) RAND_MAX);
         }
         for (int j = 0; j < K*N; j++) {
-            B[j] = (double) rand() / (double) RAND_MAX;
+            B[j] = (T) (rand() / (double) RAND_MAX);
         }
 
         struct timespec start, end, delta;
@@ -118,8 +119,11 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul func)
     free(C);
 }
 
+template void timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func);
+template void timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func);
 
-void timeFunction(struct matmul_variant *function, char *path) {
+template<class T>
+void timeFunction(matmul_variant<T> *function, char *path) {
     printf("Time %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
@@ -129,13 +133,13 @@ void timeFunction(struct matmul_variant *function, char *path) {
     const int iterationsPerConfig = 5;
 
     struct measurementConfiguration runConfig = {
-        .targetFunction = function->name,
         .cpuModel = CPU,
-        .gpuModel = GPU
+        .gpuModel = GPU,
+        .targetFunction = function->name,
     };
 
-    double *timings = calloc(numSizes * iterationsPerConfig, sizeof(*timings));
-    struct run *runs = calloc(numSizes, sizeof(*runs));
+    double *timings = (double*)calloc(numSizes * iterationsPerConfig, sizeof(*timings));
+    struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
@@ -154,3 +158,6 @@ void timeFunction(struct matmul_variant *function, char *path) {
     };
     write_measurement_to_file(&measurement, path, function->name, numSizes, iterationsPerConfig);
 }
+
+template void timeFunction<float>(matmul_variant<float> *function, char *path);
+template void timeFunction<double>(matmul_variant<double> *function, char *path);

@@ -9,7 +9,7 @@
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
-struct matmul_variant matmulVariants[] =
+matmul_variant<double> matmulVariants[] =
 {
     {
         .function = matmul_v0,
@@ -19,6 +19,11 @@ struct matmul_variant matmulVariants[] =
     {
         .function = matmul_cuda_v0,
         .name = "matmul_cuda_v0",
+        .description = "straightforward triple for loop implementation running on the GPU",
+    },
+    {
+        .function = matmul_cuda_v1,
+        .name = "matmul_cuda_v1",
         .description = "straightforward triple for loop implementation running on the GPU",
     }
 };
@@ -133,17 +138,18 @@ void testSplitCorrectness(struct split_variant *function)
     free(dA16);
 }
 
-void testMatmulCorrectness(struct matmul_variant *function) {
+template<class T>
+void testMatmulCorrectness(matmul_variant<T> *function) {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
     int M, K, N;
     M = K = N = 32;
-    double* A = (double *) malloc(M * K * sizeof(double));
-    double* B = (double *) malloc(K * N * sizeof(double));
-    double* C = (double *) malloc(M * N * sizeof(double));
-    double* C_ref = (double *) malloc(M * N * sizeof(double));
+    T* A = (T *) malloc(M * K * sizeof(T));
+    T* B = (T *) malloc(K * N * sizeof(T));
+    T* C = (T *) malloc(M * N * sizeof(T));
+    T* C_ref = (T *) malloc(M * N * sizeof(T));
 
     // Populate matrices with random values between 0 and 1
     randomFill(A, M*K);
@@ -165,11 +171,12 @@ void testMatmulCorrectness(struct matmul_variant *function) {
     free(C_ref);
 }
 
-void profile(struct matmul_variant variant, int warmup, int iterations, int M, int K, int N)
+template<class T>
+void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K, int N)
 {
-    double *A = calloc(M * K, sizeof(*A));
-    double *B = calloc(K * N, sizeof(*B));
-    double *C = calloc(M * N, sizeof(*C));
+    T *A = (T*)calloc(M * K, sizeof(*A));
+    T *B = (T*)calloc(K * N, sizeof(*B));
+    T *C = (T*)calloc(M * N, sizeof(*C));
 
     profiler_reset();
     for(int i = 0; i < warmup; i++)
@@ -197,8 +204,8 @@ int main(int argc, char *argv[])
         {
             testSplitCorrectness(&splitVariants[i]);
         }
-        //profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
-        //profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants[0], 0, 1, 1024, 1024, 1024);
+        profile(matmulVariants[1], 0, 1, 8192, 8192, 8192);
     }
     else
     {

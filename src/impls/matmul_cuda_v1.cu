@@ -8,7 +8,7 @@
 #include "../matmul.h"
 #include "../profiler.h"
 
-__global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, int K, int N) 
+__global__ void matmul_cuda_v1_kernel(double *A, double *B, double *C, int M, int K, int N) 
 {
     int m = blockIdx.x * blockDim.x + threadIdx.x;
     int n = blockIdx.y * blockDim.y + threadIdx.y;
@@ -21,7 +21,7 @@ __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, in
 }
 
 
-void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N) 
+void matmul_cuda_v1(double *A, double *B, double *C, int M, int K, int N) 
 {
     assert((M & 0xF) == 0);
     assert((K & 0xF) == 0);
@@ -44,7 +44,7 @@ void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     PROFILE_SEGMENTS_SWITCH("matmul");
     dim3 threadsPerBlock(16, 16);
     dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
-    matmul_cuda_v0_kernel<<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
+    matmul_cuda_v1_kernel<<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
 
     cudaDeviceSynchronize();
 
