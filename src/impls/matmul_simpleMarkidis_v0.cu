@@ -4,20 +4,45 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <cuda_fp16.h>
+#include <mma.h>
 
 #include "../matmul.h"
 #include "../profiler.h"
 
-__global__ void matmul(half *A, half *B, float *C, int M, int K, int N) 
+__global__ void matmul_v0(half *A, half *B, float *C, int M, int K, int N) 
 {
     int m = blockIdx.x * blockDim.x + threadIdx.x;
     int n = blockIdx.y * blockDim.y + threadIdx.y;
     float result = 0.0;
     for (int k = 0; k < K; k++) 
     {
-        result += (float)A[m*K + k] * (float)B[k*N + n];
+        result += (float)(A[m*K + k] * B[k*N + n]);
     }
     C[m*N + n] = result;
+}
+
+__global__ void matmul_v1(half *A, half *B, float *C, int M, int K, int N) 
+{
+    using namespace nvcuda;
+
+    int warpM = blockIdx.x * 16;
+    int warpN = blockIdx.y * 16;
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag;
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag;
+
+    wmma::fill_fragment(cFrag, 0);
+
+    for (int k = 0; k < K; k += 16) 
+    {
+        wmma::load_matrix_sync(aFrag, A + warpM * K + k, K);
+        wmma::load_matrix_sync(bFrag, B + k * N + warpN, N);
+
+        wmma::mma_sync(cFrag, aFrag, bFrag, cFrag);
+    }
+
+    wmma::store_matrix_sync(C + warpM * N + warpN, cFrag, N, wmma::mem_row_major);
 }
 
 void split(const float *A, void *A16, void *dA16, int M, int N)
@@ -31,7 +56,8 @@ void split(const float *A, void *A16, void *dA16, int M, int N)
     }    
 }
 
-void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N) 
+template<int version>
+void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -39,13 +65,17 @@ void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 
     PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
 
-    half *A0 = (half*)malloc(M * K * sizeof(half));
-    half *A1 = (half*)malloc(M * K * sizeof(half));
-    half *B0 = (half*)malloc(K * N * sizeof(half));
-    half *B1 = (half*)malloc(K * N * sizeof(half));
+    size_t ASize = M * K * sizeof(half);
+    size_t BSize = K * N * sizeof(half);
+    size_t CSize = M * N * sizeof(float);
+
+    half *A0 = (half*)malloc(ASize);
+    half *A1 = (half*)malloc(ASize);
+    half *B0 = (half*)malloc(BSize);
+    half *B1 = (half*)malloc(BSize);
     float *hostC[4];
     for(int i = 0; i < 4; i++)
-        hostC[i] = (float*)malloc(M * N * sizeof(float));
+        hostC[i] = (float*)malloc(CSize);
 
     PROFILE_SEGMENTS_SWITCH("split");
 
@@ -54,9 +84,6 @@ void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 
     PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
-    size_t ASize = M * K * sizeof(half);
-    size_t BSize = K * N * sizeof(half);
-    size_t CSize = M * N * sizeof(float);
 
     half *deviceA[2], *deviceB[2];
     float *deviceC[4];
@@ -75,12 +102,20 @@ void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
     cudaMemcpy(deviceB[1], B1, BSize, cudaMemcpyHostToDevice);
 
     PROFILE_SEGMENTS_SWITCH("matmul");
-    dim3 threadsPerBlock(16, 16);
-    dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
-    matmul<<<blocks, threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-    matmul<<<blocks, threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[1], M, K, N);
-    matmul<<<blocks, threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[2], M, K, N);
-    matmul<<<blocks, threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+    if constexpr (version == 0)
+    {
+        dim3 threadsPerBlock(16, 16);
+        dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
+        for(int i = 0; i < 4; i++)
+            matmul_v0<<<blocks, threadsPerBlock>>>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+    }
+    else if constexpr (version == 1)
+    {
+        dim3 threadsPerBlock(32, 1);
+        dim3 blocks(M/16, N/16);
+        for(int i = 0; i < 4; i++)
+            matmul_v1<<<blocks, threadsPerBlock>>>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+    }
 
     cudaDeviceSynchronize();
 
@@ -108,5 +143,15 @@ void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
     for(int i = 0; i < 4; i++)
         cudaFree(&deviceC[i]);
     PROFILE_SEGMENT_FUNCTION_END();
+}
+
+void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
+{
+    matmul_simpleMarkidis<0>(A, B, C, M, K, N);
+}
+
+void matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
+{
+    matmul_simpleMarkidis<1>(A, B, C, M, K, N);
 }
 

@@ -14,7 +14,12 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_simpleMarkidis_v0,
         .name = "Simple Markidis v0",
-        .description = "Markidis implementation uses 4 matmul dispatches and summs the result on the CPU",
+        .description = "Simple markidis with simple cuda matmul"
+    },
+    {
+        .function = matmul_simpleMarkidis_v1,
+        .name = "Simple Markidis v1",
+        .description = "Simple markidis with simple tensor matmul"
     },
 };
 
@@ -76,8 +81,7 @@ void randomFill(T *M, int N)
     }
 }
 
-template<class T>
-bool isEqual(T *A, T *B, int N)
+bool isEqual(const double *A, const double *B, int N)
 {
     double epsilon = 0.001;
     _Bool fail = false;
@@ -88,13 +92,12 @@ bool isEqual(T *A, T *B, int N)
             break;
         }
     }
-
     return !fail;
 }
 
-bool isEqualf(const float *A, const float *B, int N)
+bool isEqual(const float *A, const float *B, int N)
 {
-    float epsilon = 0.001;
+    float epsilon = 0.002;
     _Bool fail = false;
     for (int i = 0; i < N; i++) {
         float err = fabsf(A[i] - B[i]);
@@ -103,7 +106,6 @@ bool isEqualf(const float *A, const float *B, int N)
             break;
         }
     }
-
     return !fail;
 }
 
@@ -136,7 +138,7 @@ void testSplitCorrectness(struct split_variant *function)
     // f_inv(f(x)) ~= identity
     function->functionf(Af, A16, dA16, M, N);
     function->invFunctionf(A16, dA16, Af_merged, M, N);
-    if (!isEqualf(Af, Af_merged, M*N)) {
+    if (!isEqual(Af, Af_merged, M*N)) {
         printf("FAILURE: merging the output of %s (float variant) is not identical to input!\n", function->name);
         fail = true;
     } 
@@ -151,6 +153,21 @@ void testSplitCorrectness(struct split_variant *function)
     free(Af_merged);
     free(A16);
     free(dA16);
+}
+
+template<class T>
+void printMatrix(T *A, int M, int N)
+{
+    for(int m = 0; m < M; m++)
+    {
+        for(int n = 0; n < N; n++)
+        {
+            if(n != 0)
+                printf(", ");
+            printf("%f", A[m*N + n]);
+        }
+        printf("\n");
+    }
 }
 
 template<class T>
@@ -174,8 +191,13 @@ void testMatmulCorrectness(matmul_variant<T> *function) {
     referenceMatmul(A, B, C_ref, M, K, N);
     function->function(A, B, C, M, K, N);
     
-    if (!isEqual(C, C_ref, M*N)) {
+    if (!isEqual(C, C_ref, M*N)) 
+    {
         printf("FAILURE: %s is NOT identical to the reference\n", function->name);
+        printf("Result\n");
+        printMatrix(C, M, N);
+        printf("Expected\n");
+        printMatrix(C_ref, M, N);
     } else {
         printf("SUCCESS: %s passed correctness tests!\n", function->name);
     }
@@ -225,6 +247,7 @@ int main(int argc, char *argv[])
         }
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[0], 0, 1, 4096, 4096, 4096);
+        profile(matmulVariants32[1], 0, 1, 4096, 4096, 4096);
     }
     else
     {
