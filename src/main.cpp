@@ -14,12 +14,14 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_simpleMarkidis_v0,
         .name = "Simple Markidis v0",
-        .description = "Simple markidis with simple cuda matmul"
+        .description = "Simple markidis with simple cuda matmul",
+        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v1,
         .name = "Simple Markidis v1",
-        .description = "Simple markidis with simple tensor matmul"
+        .description = "Simple markidis with simple tensor matmul",
+        .countFlops = matmul_flopcount_32,
     },
 };
 
@@ -29,6 +31,7 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuda_v0,
         .name = "matmul_cuda_v0",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .countFlops = matmul_flopcount_64,
     },
 };
 

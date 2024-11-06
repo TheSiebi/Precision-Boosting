@@ -7,8 +7,17 @@
 #include <time.h>
 #include <stdbool.h>
 
+
+struct flop_counts
+{
+    long flops16;
+    long flops32;
+    long flops64;
+};
+
 template<class T>
 using MatMul = void (*)(T *A, T *B, T *C, int M, int K, int N);
+using FlopCounts = flop_counts (*)(int M, int K, int N);
 
 template<class T>
 struct matmul_variant
@@ -16,6 +25,7 @@ struct matmul_variant
     MatMul<T> function;
     const char *name;
     const char *description;
+    FlopCounts countFlops;
 };
 
 typedef void (*Split)(const double *A, void *A16, void *dA16, int M, int N);
@@ -48,6 +58,9 @@ struct run
     int M;
     int N;
     int K;
+    long flops16;
+    long flops32;
+    long flops64;
     double *timings;
 };
 
@@ -62,6 +75,9 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> fun
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path);
+
+flop_counts matmul_flopcount_32(int M, int K, int N);
+flop_counts matmul_flopcount_64(int M, int K, int N);
 
 
 #endif // FUNCTIONTIMER_H

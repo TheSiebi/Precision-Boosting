@@ -50,7 +50,7 @@ def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
 
     return median_timings, mean_timings, min_timings, max_timings
 
-def plot_setup(ylabel='time [ms]'):
+def plot_setup(ylabel='[Gflop/s]'):
     # Set background color to light gray
     plt.gca().set_facecolor('0.95')
 
@@ -81,7 +81,7 @@ def generate_speedup_plot(data: dict, input_folder: str):
         input_folder: Name of input folder at timings
     """
     plot_setup(ylabel='Speedup')
-    all_timings = []
+    all_performances = []
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
 
     # Compute performance for each run
@@ -90,16 +90,18 @@ def generate_speedup_plot(data: dict, input_folder: str):
         runs = d['runs']
         avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
         sizes = [run['N'] for run in runs] # Assume square matrices only for now
-        all_timings.append(avg_timings)
+        gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+        performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
+        all_performances.append(performances)
 
     # Compute speedup for each run compared to the first run
-    for i in range(1, len(all_timings)):
-        speedup = [all_timings[i][j] / all_timings[0][j] for j in range(len(all_timings[0]))]
+    for i in range(1, len(all_performances)):
+        speedup = [all_performances[i][j] / all_performances[0][j] for j in range(len(all_performances[0]))]
         plt.plot(sizes, speedup, color='0.0', linewidth=0.5)
 
     # Fill area between speedup lines
     for i in range(len(data)-1, 0, -1):
-        speedup = [all_timings[i][j] / all_timings[0][j] for j in range(len(all_timings[0]))]
+        speedup = [all_performances[i][j] / all_performances[0][j] for j in range(len(all_performances[0]))]
         d = data[i]
         label = d['meta']['function name']
         # Add compiler info if contained in data
@@ -155,13 +157,15 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
         runs = d['runs']
         avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
         sizes = [run['N'] for run in runs]
+        gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+        performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
         label = d['meta']['function name']
         # Add compiler info if contained in data
         if 'compiler' in d['meta']:
             label += f" ({d['meta']['compiler']})"
         if 'flags' in d['meta']:
             label += f" {d['meta']['flags']}"
-        plt.plot(sizes, avg_timings, color=line_colors[i%len(line_colors)], label=label)
+        plt.plot(sizes, performances, color=line_colors[i%len(line_colors)], label=label)
 
     # Only show gpu if all data is from the same gpu
     title_suffix = ""
@@ -193,9 +197,11 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
     # Compute performance for each run
     runs = data['runs']
     avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
+    gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+    performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
     sizes = [run['N'] for run in runs] # Only use square matrices for now
 
-    plt.plot(sizes, avg_timings, marker='o', color='0.0')
+    plt.plot(sizes, performances, marker='o', color='0.0')
     plt.xticks(sizes, sizes) # Force x-ticks to match data
     plt.title(f"Performance of {data['meta']['function name']} on {data['meta']['gpu model']}", loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
     plt.gca().set_ylim(bottom=0)
