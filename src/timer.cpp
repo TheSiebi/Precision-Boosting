@@ -172,7 +172,7 @@ template void timeFunction<double>(matmul_variant<double> *function, char *path)
 flop_counts matmul_flopcount_32(int M, int K, int N) {
     flop_counts counts;
     counts.flops16 = 0;
-    counts.flops32 = 2*M*K*N;
+    counts.flops32 = 2L*M*K*N;
     counts.flops64 = 0;
     return counts;
 }
@@ -180,7 +180,7 @@ flop_counts matmul_flopcount_32(int M, int K, int N) {
 flop_counts matmul_flopcount_64(int M, int K, int N) {
     flop_counts counts;
     counts.flops16 = 0;
-    counts.flops32 = 2*M*K*N;
+    counts.flops32 = 2L*M*K*N;
     counts.flops64 = 0;
     return counts;
 }
