@@ -12,13 +12,14 @@ CC=gcc
 OBJ_FILES=build/profiler.o build/timer.o build/cJSON.o 
 OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
 OBJ_FILES+=build/matmul_simpleMarkidis_v0.o
+OBJ_FILES+=build/matmul_cuBLAS.o
 
 
 .PHONY: $(OBJ_FILES)
 
 
 build: prepareBuild $(OBJ_FILES)
-	$(CC) $(OPT_FLAGS) src/main.cpp $(OBJ_FILES) -o build/main -lm -lcudart
+	$(CC) $(OPT_FLAGS) src/main.cpp $(OBJ_FILES) -o build/main -lm -lcudart -lcublas
 
 prepareBuild:
 	mkdir -p build
@@ -47,6 +48,9 @@ build/split_v0.o:
 
 build/merge_accumulate_v0.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/merge_accumulate_v0.cu -o $@
+
+build/matmul_cuBLAS.o:
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuBLAS.cu -o $@
 
 run:
 	./build/main
