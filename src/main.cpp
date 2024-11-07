@@ -14,18 +14,26 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_simpleMarkidis_v0,
         .name = "Simple Markidis v0",
-        .description = "Simple markidis with simple cuda matmul"
+        .description = "Simple markidis with simple cuda matmul",
+        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v1,
         .name = "Simple Markidis v1",
-        .description = "Simple markidis with simple tensor matmul"
+        .description = "Simple markidis with simple tensor matmul",
+        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleOotomo_v0,
         .name = "Simple Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
     },
+    {
+        .function = matmul_cuBLAS32,
+        .name = "matmul_cuBLAS",
+        .description = "cuBLAS",
+        .countFlops = matmul_flopcount_32,
+    }
 };
 
 matmul_variant<double> matmulVariants64[] =
@@ -34,7 +42,14 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuda_v0,
         .name = "matmul_cuda_v0",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .countFlops = matmul_flopcount_64,
     },
+    {
+        .function = matmul_cuBLAS64,
+        .name = "matmul_cuBLAS",
+        .description = "cuBLAS",
+        .countFlops = matmul_flopcount_64,
+    }
 };
 
 struct split_variant splitVariants[] =
@@ -251,6 +266,7 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i]);
         }
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
+        profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
     }

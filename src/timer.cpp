@@ -31,6 +31,9 @@ cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
     cJSON_AddNumberToObject(json, "M", r->M);
     cJSON_AddNumberToObject(json, "K", r->K);
     cJSON_AddNumberToObject(json, "N", r->N);
+    cJSON_AddNumberToObject(json, "flops16", r->flops16);
+    cJSON_AddNumberToObject(json, "flops32", r->flops32);
+    cJSON_AddNumberToObject(json, "flops64", r->flops64);
 
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterationsPerConfig);
     cJSON_AddItemToObject(json, "timings", timings_array);
@@ -128,7 +131,7 @@ void timeFunction(matmul_variant<T> *function, char *path) {
     // information set by makefile?:
     // flags, compiler, cpu model
     int powerOfMaxSize = 8;
-    int powerOfMinSize = 3;
+    int powerOfMinSize = 4;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int iterationsPerConfig = 5;
 
@@ -144,10 +147,14 @@ void timeFunction(matmul_variant<T> *function, char *path) {
     {
         int n = 1 << (i + powerOfMinSize);
         timeRun(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function);
+        flop_counts counts = function->countFlops(n, n, n);
         struct run run = {
             .M = n,
             .N = n,
             .K = n,
+            .flops16 = counts.flops16,
+            .flops32 = counts.flops32,
+            .flops64 = counts.flops64,
             .timings = &timings[i * iterationsPerConfig]
         };
         runs[i] = run;
@@ -161,3 +168,19 @@ void timeFunction(matmul_variant<T> *function, char *path) {
 
 template void timeFunction<float>(matmul_variant<float> *function, char *path);
 template void timeFunction<double>(matmul_variant<double> *function, char *path);
+
+flop_counts matmul_flopcount_32(int M, int K, int N) {
+    flop_counts counts;
+    counts.flops16 = 0;
+    counts.flops32 = 2L*M*K*N;
+    counts.flops64 = 0;
+    return counts;
+}
+
+flop_counts matmul_flopcount_64(int M, int K, int N) {
+    flop_counts counts;
+    counts.flops16 = 0;
+    counts.flops32 = 2L*M*K*N;
+    counts.flops64 = 0;
+    return counts;
+}
