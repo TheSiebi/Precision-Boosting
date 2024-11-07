@@ -7,7 +7,7 @@ OPT_FLAGS=$(CPP_FLAGS) -O3
 DEBUG_FLAGS=$(CPP_FLAGS) -O0 -fsanitize=address
 CUDA_FLAGS= -g -arch=sm_70
 
-CC=gcc
+CC=g++
 
 OBJ_FILES=build/profiler.o build/timer.o build/cJSON.o 
 OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
