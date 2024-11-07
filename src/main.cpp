@@ -7,6 +7,10 @@
 #include "split.h"
 #include "merge_accumulate.h"
 
+#include <iostream>
+#include <iomanip>
+#include <string.h>
+
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
 matmul_variant<float> matmulVariants32[] =
@@ -191,6 +195,107 @@ void printMatrix(T *A, int M, int N)
 }
 
 template<class T>
+void testMatmulCorrectness_show_error(matmul_variant<T>* function)
+{
+    const T EPSILON = 0.002;
+    const int FUNCTION_NAME_WIDTH = 26;
+    const auto count_digits = [](int num)
+    {
+        if (num < 0)
+            return 0; // unimplemented
+        if (num == 0)
+            return 1;
+        int ret = 0;
+        while (num > 0)
+        {
+            num /= 10;
+            ret++;
+        }
+        return ret;
+    };
+
+    // Parameters
+    // srand(time(NULL));
+    const size_t M = 48, K = 32, N = 16;
+    // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
+
+    // Allocate matrices
+    T *A = (T*) malloc(M * K * sizeof(T));
+    T *B = (T*) malloc(K * N * sizeof(T));
+    T *C = (T*) malloc(M * N * sizeof(T));
+    T *C_ref = (T*) malloc(M * N * sizeof(T));
+
+    // Populate A, B, C
+    for (size_t i = 0; i < M * K; ++i)
+        A[i] = rand() / (T) RAND_MAX;
+    for (size_t i = 0; i < K * N; ++i)
+        B[i] = rand() / (T) RAND_MAX;
+    for (size_t i = 0; i < M * N; ++i)
+        // Ensures absence of data from previous runs.
+        C[i] = rand() / (T) RAND_MAX;
+
+    // Compute reference solution
+    referenceMatmul(A, B, C_ref, M, K, N);
+
+    // Call function under test
+    function->function(A, B, C, M, K, N);
+
+    // Analyze result
+    bool success = true;
+    int wrong = 0; // index of first wrong matrix entry
+    T abs_diff = 0.f, rel_errr = 0.f;
+    for (size_t i = 0; i < M * N; ++i)
+    {
+        abs_diff = std::max(abs_diff, abs(C_ref[i] - C[i]));
+        rel_errr = std::max(rel_errr, abs(C_ref[i] - C[i]) / C_ref[i]);
+        if (abs_diff > EPSILON)
+        {
+            std::cout
+                << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
+                << function->name;
+            for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
+                std::cout << " ";
+            std::cout
+                << "wrong @ " << i << " ";
+            int spaces = 2 + 3 - count_digits(i);
+            for (int tmp = 0; tmp < spaces; ++tmp)
+                std::cout << " ";
+            success = false;
+            wrong = i;
+            break;
+        }
+    }
+    if (success)
+    {
+        std::cout
+            << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
+            << function->name;
+        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
+            std::cout << " ";
+        std::cout << "correct.      ";
+    }
+    std::cout
+        << "abs \033[33m" << std::setw(12) << abs_diff << "\033[0m  " // Yellow text
+        << "rel \033[33m" << std::setw(12) << rel_errr  * 100.f << " %\033[0m"; // Yellow text
+    if (!success)
+    {
+        std::cout
+            << "  E "
+            << C_ref[wrong]
+            << " != "
+            << C[wrong]
+            << " A ";
+    }
+    std::cout << std::endl;
+
+    // Free memory
+    free(A);
+    free(B);
+    free(C);
+    free(C_ref);
+}
+
+template<class T>
 void testMatmulCorrectness(matmul_variant<T> *function) {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -255,11 +360,13 @@ int main(int argc, char *argv[])
     {
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {
-            testMatmulCorrectness(&matmulVariants32[i]);
+            testMatmulCorrectness_show_error(&matmulVariants32[i]);
+            // testMatmulCorrectness(&matmulVariants32[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            testMatmulCorrectness(&matmulVariants64[i]);
+            testMatmulCorrectness_show_error(&matmulVariants64[i]);
+            // testMatmulCorrectness(&matmulVariants64[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
