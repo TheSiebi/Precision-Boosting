@@ -75,33 +75,42 @@ __global__ void matmul_v0_kernel(const float *A, const float *B, float *C, int M
     const int innerColA = threadIdx.x % (BK / 4);
     const int innerRowB = threadIdx.x / (BN / 4);
     const int innerColB = threadIdx.x % (BN / 4);
+    // complete #rows that gets loaded in one loading iteration
+    const int strideA = 4 * blockDim.x / BK;
+    const int strideB = 4 * blockDim.x / BN;
 
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
         // populate SMEM cache
-        // transpose A while loading, i.e. save it in col-major order (not sure if that benefits the tensor cores but for classical Matmul, it would be an advantage)
-        float4 tmp = *(reinterpret_cast<float4 *>(A + innerRowA * K + innerColA * 4));
-        struct split tmp_split = split_Ootomo(tmp);
-        As[(innerColA * 4 + 0) * BM + innerRowA] = tmp_split.x.x;
-        As[(innerColA * 4 + 1) * BM + innerRowA] = tmp_split.x.y;
-        As[(innerColA * 4 + 2) * BM + innerRowA] = tmp_split.y.x;
-        As[(innerColA * 4 + 3) * BM + innerRowA] = tmp_split.y.y;
-        dAs[(innerColA * 4 + 0) * BM + innerRowA] = tmp_split.dx.x;
-        dAs[(innerColA * 4 + 1) * BM + innerRowA] = tmp_split.dx.y;
-        dAs[(innerColA * 4 + 2) * BM + innerRowA] = tmp_split.dy.x;
-        dAs[(innerColA * 4 + 3) * BM + innerRowA] = tmp_split.dy.y;
-
-        tmp = *(reinterpret_cast<float4 *>(B + innerRowB * N + innerColB * 4));
-        tmp_split = split_Ootomo(tmp);
-        Bs[innerRowB * BN + innerColB * 4 + 0] = tmp_split.x.x;
-        Bs[innerRowB * BN + innerColB * 4 + 1] = tmp_split.x.y;
-        Bs[innerRowB * BN + innerColB * 4 + 2] = tmp_split.y.x;
-        Bs[innerRowB * BN + innerColB * 4 + 3] = tmp_split.y.y;
-        dBs[innerRowB * BN + innerColB * 4 + 0] = tmp_split.dx.x;
-        dBs[innerRowB * BN + innerColB * 4 + 1] = tmp_split.dx.y;
-        dBs[innerRowB * BN + innerColB * 4 + 2] = tmp_split.dy.x;
-        dBs[innerRowB * BN + innerColB * 4 + 3] = tmp_split.dy.y;
+        for (int loadOffset = 0; loadOffset < BM; loadOffset += strideA)
+        {
+            // transpose A while loading, i.e. save it in col-major order 
+            // (not sure if that benefits the tensor cores but for classical Matmul, it would be an advantage)
+            float4 tmp = *(reinterpret_cast<float4 *>(A + (innerRowA + loadOffset) * K + innerColA * 4));
+            struct split tmp_split = split_Ootomo(tmp);
+            As[(innerColA * 4 + 0) * BM + innerRowA + loadOffset] = tmp_split.x.x;
+            As[(innerColA * 4 + 1) * BM + innerRowA + loadOffset] = tmp_split.x.y;
+            As[(innerColA * 4 + 2) * BM + innerRowA + loadOffset] = tmp_split.y.x;
+            As[(innerColA * 4 + 3) * BM + innerRowA + loadOffset] = tmp_split.y.y;
+            dAs[(innerColA * 4 + 0) * BM + innerRowA + loadOffset] = tmp_split.dx.x;
+            dAs[(innerColA * 4 + 1) * BM + innerRowA + loadOffset] = tmp_split.dx.y;
+            dAs[(innerColA * 4 + 2) * BM + innerRowA + loadOffset] = tmp_split.dy.x;
+            dAs[(innerColA * 4 + 3) * BM + innerRowA + loadOffset] = tmp_split.dy.y;
+        }
+        for (int loadOffset = 0; loadOffset < BK; loadOffset += strideB)
+        {
+            tmp = *(reinterpret_cast<float4 *>(B + (innerRowB + loadOffset) * N + innerColB * 4));
+            tmp_split = split_Ootomo(tmp);
+            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 0] = tmp_split.x.x;
+            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 1] = tmp_split.x.y;
+            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 2] = tmp_split.y.x;
+            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 3] = tmp_split.y.y;
+            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 0] = tmp_split.dx.x;
+            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 1] = tmp_split.dx.y;
+            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 2] = tmp_split.dy.x;
+            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 3] = tmp_split.dy.y;
+        }
     }
 
 }
@@ -134,11 +143,13 @@ void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
     constexpr int BM = WMMA_M * 8;
     constexpr int BN = WMMA_N * 8;
     constexpr int BK = WMMA_K * CHUNK_K;
+    // The number of blocks must deivide the matrix dimensions
     assert(M % BM == 0);
     assert(N % BN == 0);
     assert(K % BK == 0);
-    constexpr int WM = WMMA_M * 4;
-    constexpr int WN = WMMA_N * 4;
+    constexpr int WM = WMMA_M * 2;
+    constexpr int WN = WMMA_N * 2;
+    // the number of warps must divide the warp dimensions
     static_assert(BM % WM == 0);
     static_assert(BN % WN == 0);
     constexpr int N_WARP_ROWS_PER_BLOCK = BM / WM;
@@ -146,6 +157,15 @@ void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
     constexpr int N_WMMA_ROWS_PER_WARP = WM / WMMA_M;
     constexpr int N_WMMA_COLS_PER_WARP = WN / WMMA_N;
     constexpr int threadsPerBlock = N_WARP_ROWS_PER_BLOCK * N_WARP_COLS_PER_BLOCK * WARP_SIZE;
+    // In each SMEM loading iteration, each thread loads 4 values from GMEM
+    // These asserts ensures that the loading loop does not convert divergent branches (i.e. each thread has 
+    // the same amount of values to load)
+    static_assert((BM * BK) % (4 * threadsPerBlock) == 0);
+    static_assert((BK * BN) % (4 * threadsPerBlock) == 0);
+    // These asserts ensure that in each SMEM loading iteration, the threads load N entire rows (and not a half row or something)
+    // of the shared memory
+    static_assert((4 * threadsPerBlock) % BK == 0);
+    static_assert((4 * threadsPerBlock) % BN == 0);
     dim3 blocks(M / BM, N / BN);
     matmul_v0_kernel<BM, BN, BK, WM, WN, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP>
         <<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
