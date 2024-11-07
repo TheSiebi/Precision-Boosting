@@ -15,6 +15,33 @@
 
 #define WARP_SIZE 32
 
+struct split
+{
+    // original terms
+    half2 x;
+    half2 y;
+    // error terms
+    half2 dx;
+    half2 dy;
+};
+
+__device__ struct split split_Ootomo(float4 value)
+{
+    float2 first = make_float2(value.x, value.y);
+    float2 second = make_float2(value.z, value.w);
+    struct split split;
+
+    split.x = __float22half2_rn(first);
+    split.y = __float22half2_rn(second);
+
+    float2 reconstructed = __half22float2(split.x);
+    split.dx = __float22half2_rn(make_float2((first.x - reconstructed.x) * 2048, (first.y - reconstructed.y) * 2048));
+
+    reconstructed = __half22float2(split.y);
+    split.dy = __float22half2_rn(make_float2((second.x - reconstructed.x) * 2048, (second.y - reconstructed.y) * 2048));
+}   
+
+// Code adapted from: https://github.com/siboehm/SGEMM_CUDA/tree/master
 template <const int BM, const int BN, const int BK, const int WM, const int WN,
           const int N_WARP_ROWS_PER_BLOCK,
           const int N_WARP_COLS_PER_BLOCK,
@@ -27,6 +54,8 @@ __global__ void matmul_v0_kernel(const float *A, const float *B, float *C, int M
     // allocate space for the current blocktile in shared memory
     __shared__ half As[BM * BK];
     __shared__ half Bs[BK * BN];
+    __shared__ half dAs[BM * BK];
+    __shared__ half dBs[BK * BN];
 
     // Move blocktile to beggining of A's row and B's column
     const int cRow = blockIdx.x;
@@ -51,7 +80,28 @@ __global__ void matmul_v0_kernel(const float *A, const float *B, float *C, int M
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
         // populate SMEM cache
-        // transpose A while loading, i.e. save it in col-major order
+        // transpose A while loading, i.e. save it in col-major order (not sure if that benefits the tensor cores but for classical Matmul, it would be an advantage)
+        float4 tmp = *(reinterpret_cast<float4 *>(A + innerRowA * K + innerColA * 4));
+        struct split tmp_split = split_Ootomo(tmp);
+        As[(innerColA * 4 + 0) * BM + innerRowA] = tmp_split.x.x;
+        As[(innerColA * 4 + 1) * BM + innerRowA] = tmp_split.x.y;
+        As[(innerColA * 4 + 2) * BM + innerRowA] = tmp_split.y.x;
+        As[(innerColA * 4 + 3) * BM + innerRowA] = tmp_split.y.y;
+        dAs[(innerColA * 4 + 0) * BM + innerRowA] = tmp_split.dx.x;
+        dAs[(innerColA * 4 + 1) * BM + innerRowA] = tmp_split.dx.y;
+        dAs[(innerColA * 4 + 2) * BM + innerRowA] = tmp_split.dy.x;
+        dAs[(innerColA * 4 + 3) * BM + innerRowA] = tmp_split.dy.y;
+
+        tmp = *(reinterpret_cast<float4 *>(B + innerRowB * N + innerColB * 4));
+        tmp_split = split_Ootomo(tmp);
+        Bs[innerRowB * BN + innerColB * 4 + 0] = tmp_split.x.x;
+        Bs[innerRowB * BN + innerColB * 4 + 1] = tmp_split.x.y;
+        Bs[innerRowB * BN + innerColB * 4 + 2] = tmp_split.y.x;
+        Bs[innerRowB * BN + innerColB * 4 + 3] = tmp_split.y.y;
+        dBs[innerRowB * BN + innerColB * 4 + 0] = tmp_split.dx.x;
+        dBs[innerRowB * BN + innerColB * 4 + 1] = tmp_split.dx.y;
+        dBs[innerRowB * BN + innerColB * 4 + 2] = tmp_split.dy.x;
+        dBs[innerRowB * BN + innerColB * 4 + 3] = tmp_split.dy.y;
     }
 
 }
@@ -78,6 +128,8 @@ void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 
     PROFILE_SEGMENTS_SWITCH("matmul");
 
+    // If this is changed, ensure that shared memory is still large enough or 
+    // change shared memory settings with CUDA runtime API
     constexpr int CHUNK_K = 2;
     constexpr int BM = WMMA_M * 8;
     constexpr int BN = WMMA_N * 8;
