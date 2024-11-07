@@ -12,7 +12,8 @@ void matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
     cublasHandle_t handle;
     cublasStatus_t status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        printf("CUBLAS initialization failed\n");
+        printf("CUBLAS initialization failed. %s: %s\n",
+                cublasGetStatusName(status), cublasGetStatusString(status));
         return;
     }
 
@@ -61,7 +62,8 @@ void matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N)
     cublasHandle_t handle;
     cublasStatus_t status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        printf("CUBLAS initialization failed\n");
+        printf("CUBLAS initialization failed. %s: %s\n",
+                cublasGetStatusName(status), cublasGetStatusString(status));
         return;
     }
 
