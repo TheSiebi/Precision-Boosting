@@ -21,6 +21,11 @@ matmul_variant<float> matmulVariants32[] =
         .name = "Simple Markidis v1",
         .description = "Simple markidis with simple tensor matmul"
     },
+    {
+        .function = matmul_simpleOotomo_v0,
+        .name = "Simple Ootomo v0",
+        .description = "Very basic Ootomo using CUDA",
+    },
 };
 
 matmul_variant<double> matmulVariants64[] =
