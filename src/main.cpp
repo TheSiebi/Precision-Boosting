@@ -6,6 +6,7 @@
 #include "math.h"
 #include "split.h"
 #include "merge_accumulate.h"
+#include "rand.h"
 
 #include <iostream>
 #include <iomanip>
@@ -96,21 +97,6 @@ void referenceMatmul(T *A, T *B, T *C, int M, int K, int N)
     }
 }
 
-void randomFillf(float *M, int N)
-{
-    for (int j = 0; j < N; j++) {
-        M[j] =  (float) rand() / (float) RAND_MAX;
-    }
-}
-
-template<class T>
-void randomFill(T *M, int N)
-{
-    for (int j = 0; j < N; j++) {
-        M[j] = (T) (rand() / (double) RAND_MAX);
-    }
-}
-
 bool isEqual(const double *A, const double *B, int N)
 {
     double epsilon = 0.001;
@@ -149,9 +135,11 @@ void testSplitCorrectness(struct split_variant *function)
     float* Af_merged = (float *) malloc(M * N * sizeof(float));
     void *A16 = malloc(M * N * 2);
     void *dA16 = malloc(M * N * 2);
+
+    LCG rng = new_rng();
     
     // Populate matrices with random values between 0 and 1
-    randomFill(A, M*N);
+    gen_urand<double>(&rng, A, M*N);
     
     // f_inv(f(x)) ~= identity
     function->function(A, A16, dA16, M, N);
@@ -163,7 +151,7 @@ void testSplitCorrectness(struct split_variant *function)
     } 
 
     // Populate matrices with random values between 0 and 1
-    randomFillf(Af, M*N);
+    gen_urand<float>(&rng, Af, M*N);
     
     // f_inv(f(x)) ~= identity
     function->functionf(Af, A16, dA16, M, N);
@@ -235,10 +223,9 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
     T *C_ref = (T*) malloc(M * N * sizeof(T));
 
     // Populate A, B, C
-    for (size_t i = 0; i < M * K; ++i)
-        A[i] = rand() / (T) RAND_MAX;
-    for (size_t i = 0; i < K * N; ++i)
-        B[i] = rand() / (T) RAND_MAX;
+    LCG rng = new_rng();
+    gen_urand<T>(&rng, A, M * K);
+    gen_urand<T>(&rng, B, K * N);
 
     // Compute reference solution
     referenceMatmul(A, B, C_ref, M, K, N);
@@ -315,8 +302,9 @@ void testMatmulCorrectness(matmul_variant<T> *function) {
     T* C_ref = (T *) malloc(M * N * sizeof(T));
 
     // Populate matrices with random values between 0 and 1
-    randomFill(A, M*K);
-    randomFill(B, K*N);
+    LCG rng = new_rng();
+    gen_urand<T>(&rng, A, M*K);
+    gen_urand<T>(&rng, B, K*N);
 
     // Use matmul_v0 as a reference implementation
     referenceMatmul(A, B, C_ref, M, K, N);
