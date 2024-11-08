@@ -18,21 +18,10 @@ uint64_t double_to_bits(double d) {
 }
 
 struct LCG new_rng() {
-    // Compute number of bits in RAND_MAX (rounded down)
-    uint64_t rmax = RAND_MAX;
-    int rmax_log2 = 0;
-    while (rmax > 1) {
-        rmax_log2++;
-        rmax >>= 1;
-    }
-    // We need 64 bits total for a full seed, so how many rand calls?
-    int num_calls = ((64 - 1) / rmax_log2) + 1;
-    uint64_t accumulator = 0;
-    for (int i = 0; i < num_calls; i++) {
-        accumulator |= rand();
-        accumulator <<= rmax_log2;
-    }
-    return rng_seeded(accumulator);
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &time);
+    // Randomize seed using nanoseconds of current time
+    return rng_seeded((uint64_t) time.tv_nsec);
 }
 struct LCG rng_seeded(uint64_t seed) {
     struct LCG result;
@@ -50,9 +39,36 @@ uint32_t next(struct LCG *rng) {
     return (uint32_t) (result >> 32);
 }
 uint64_t next_u64(struct LCG *rng) {
-    uint64_t r1 = (uint32_t) next(rng);
-    uint64_t r2 = ((uint32_t) next(rng)) << 32;
+    uint64_t r1 = (uint64_t) next(rng);
+    uint64_t r2 = ((uint64_t) next(rng)) << 32;
     return r1 | r2;
+}
+uint32_t next_below(struct LCG *rng, uint32_t max) {
+    // Unbiased generation according to https://www.pcg-random.org/posts/bounded-rands.html
+    uint32_t rand = next(rng);
+    uint64_t m = uint64_t(rand) * uint64_t(max);
+    uint32_t l = uint32_t(m);
+    if (l < max) {
+        uint32_t t = -max;
+        if (t >= max) {
+            t -= max;
+            if (t >= max) {
+                t %= max;
+            }
+        }
+        while (l < t) {
+            rand = next(rng);
+            m = uint64_t(rand) * uint64_t(max);
+            l = uint32_t(m);
+        }
+    }
+    return (uint32_t) (m >> 32);
+}
+int next_int(struct LCG *rng, int min, int max) {
+    uint32_t delta = (uint32_t) (max - min);
+    uint32_t rand = next_below(rng, delta);
+    int32_t result = min + (int32_t) rand;
+    return (int) result;
 }
 
 float next_float(struct LCG *rng) {

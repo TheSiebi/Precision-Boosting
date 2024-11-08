@@ -1,11 +1,12 @@
 #ifndef RAND_H
 #define RAND_H
 
-#include <stdint.h>
-#include <iostream>
 #include <assert.h>
-#include <math.h>
 #include <bit>
+#include <iostream>
+#include <math.h>
+#include <stdint.h>
+#include <time.h>
 
 float bits_to_float(uint32_t bits);
 uint32_t float_to_bits(float f);
