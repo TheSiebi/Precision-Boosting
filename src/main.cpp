@@ -222,7 +222,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
     // Allocate matrices
     T *A = (T*) malloc(M * K * sizeof(T));
     T *B = (T*) malloc(K * N * sizeof(T));
-    T *C = (T*) malloc(M * N * sizeof(T));
+    T *C = (T*) calloc(M * N, sizeof(T)); // Ensures C is zero to avoid interference from previous runs.
     T *C_ref = (T*) malloc(M * N * sizeof(T));
 
     // Populate A, B, C
@@ -230,9 +230,6 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
         A[i] = rand() / (T) RAND_MAX;
     for (size_t i = 0; i < K * N; ++i)
         B[i] = rand() / (T) RAND_MAX;
-    for (size_t i = 0; i < M * N; ++i)
-        // Ensures absence of data from previous runs.
-        C[i] = rand() / (T) RAND_MAX;
 
     // Compute reference solution
     referenceMatmul(A, B, C_ref, M, K, N);
