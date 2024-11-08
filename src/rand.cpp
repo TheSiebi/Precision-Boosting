@@ -43,19 +43,15 @@ struct LCG rng_seeded(uint64_t seed) {
     return result;
 }
 
-// We only return the 32 most significant bits, because they have longer periods
 uint32_t next(struct LCG *rng) {
+    // We only use the 32 most significant bits, because they have longer periods
     uint64_t result = rng->a * rng->state + rng->b;
     rng->state = result;
     return (uint32_t) (result >> 32);
 }
 uint64_t next_u64(struct LCG *rng) {
-    uint64_t r1 = rng->a * rng->state + rng->b;
-    uint64_t r2 = rng->a * r1 + rng->b;
-    rng->state = r2;
-
-    r1 = r1 >> 32;
-    r2 = (r2 >> 32) << 32;
+    uint64_t r1 = (uint32_t) next(rng);
+    uint64_t r2 = ((uint32_t) next(rng)) << 32;
     return r1 | r2;
 }
 
