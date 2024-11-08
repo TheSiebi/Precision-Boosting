@@ -24,3 +24,7 @@ To **generate** performance and speedup **plots** use the command: `make plot`
    export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
    export LIBRARY_PATH=$CUDA_HOME/lib64:$LIBRARY_PATH
    ```
+3. For debugging, execute the following command on Windows
+   ```
+   REG ADD “HKLM\SOFTWARE\NVIDIA Corporation\GPUDebugger” /f /v EnableInterface /t REG_DWORD /d 1
+   ```

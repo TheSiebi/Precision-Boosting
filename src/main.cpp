@@ -33,6 +33,12 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Very basic Ootomo using CUDA",
     },
     {
+        .function = matmul_Oootomo_v1,
+        .name = "Ootomo v1",
+        .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
+        .countFlops = matmul_flopcount_32
+    },
+    {
         .function = matmul_cuBLAS32,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
@@ -216,7 +222,8 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
 
     // Parameters
     // srand(time(NULL));
-    const size_t M = 48, K = 32, N = 16;
+    // const size_t M = 48, K = 32, N = 16;
+    const size_t M = 256, K = 256, N = 256;
     // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
 
     // Allocate matrices
@@ -373,6 +380,9 @@ int main(int argc, char *argv[])
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
+        //profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+
     }
     else
     {
