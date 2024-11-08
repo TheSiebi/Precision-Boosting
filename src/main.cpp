@@ -223,6 +223,8 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
     // Parameters
     // srand(time(NULL));
     // const size_t M = 48, K = 32, N = 16;
+    // WARNING: trying matrix sizes < 256 will (probably) cause compilation failure at worst and 
+    // test failure at best for Ootomo_v1, as this is currently not yet supported
     const size_t M = 256, K = 256, N = 256;
     // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
 
@@ -381,6 +383,7 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
+        // TODO: profiling cuBLAS32 gives me a huge time, not sure why
         //profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
 
     }
