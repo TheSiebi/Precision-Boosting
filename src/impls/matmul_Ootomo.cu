@@ -54,7 +54,7 @@ constexpr struct matmulScales getArgScales(int minSize) {
     }
     else if (minSize == 256)
     {
-        return {8, 8, 1, 2, 2};
+        return {8, 8, 2, 2, 2};
     }
     // Warning: Before adding new configuration, make sure
     // that the shared memory of the GPU is large enough to handle the block dimensions
@@ -383,6 +383,9 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
         {
             for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
             {
+                // Warning: if this is removed and the compiler unrolls this loop, register usage for this kernel is too high
+                // and it can't be launched
+                #pragma unroll 1
                 for (int chunk = 0; chunk < CHUNK_K; chunk++)
                 {
                     wmma::load_matrix_sync(aFrag, warpAs + chunk * WMMA_K, BK);

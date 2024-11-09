@@ -373,8 +373,8 @@ int main(int argc, char *argv[])
         // profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
         // profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         // profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
-        // TODO: profiling cuBLAS32 gives me a huge time, not sure why
-        //profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+        // profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+        // profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
 
     }
     else

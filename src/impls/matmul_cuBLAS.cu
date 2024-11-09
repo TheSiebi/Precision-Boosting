@@ -53,6 +53,7 @@ void matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
     cudaFree(d_B);
     cudaFree(d_C);
     cublasDestroy(handle);
+    PROFILE_SEGMENT_FUNCTION_END();
 }
 
 void matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N) {
