@@ -195,7 +195,7 @@ void printMatrix(T *A, int M, int N)
 }
 
 template<class T>
-void testMatmulCorrectness_show_error(matmul_variant<T>* function)
+void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
 {
     const T EPSILON = 0.002;
     const int FUNCTION_NAME_WIDTH = 26;
@@ -226,7 +226,6 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
     T *C_ref = (T*) malloc(M * N * sizeof(T));
 
     // Populate A, B, C
-    LCG rng = new_rng();
     gen_urand<T>(&rng, A, M * K);
     gen_urand<T>(&rng, B, K * N);
 
@@ -292,7 +291,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
 }
 
 template<class T>
-void testMatmulCorrectness(matmul_variant<T> *function) {
+void testMatmulCorrectness(matmul_variant<T> *function, LCG rng) {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
@@ -305,7 +304,6 @@ void testMatmulCorrectness(matmul_variant<T> *function) {
     T* C_ref = (T *) malloc(M * N * sizeof(T));
 
     // Populate matrices with random values between 0 and 1
-    LCG rng = new_rng();
     gen_urand<T>(&rng, A, M*K);
     gen_urand<T>(&rng, B, K*N);
 
@@ -355,14 +353,15 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
+        LCG rng = new_rng();
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
-        {
-            testMatmulCorrectness_show_error(&matmulVariants32[i]);
+        {   
+            testMatmulCorrectness_show_error(&matmulVariants32[i], rng);
             // testMatmulCorrectness(&matmulVariants32[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            testMatmulCorrectness_show_error(&matmulVariants64[i]);
+            testMatmulCorrectness_show_error(&matmulVariants64[i], rng);
             // testMatmulCorrectness(&matmulVariants64[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)

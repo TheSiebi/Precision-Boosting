@@ -54,7 +54,7 @@ constexpr struct matmulScales getArgScales(int minSize) {
     }
     else if (minSize == 256)
     {
-        return {8, 8, 2, 2, 2};
+        return {8, 8, 1, 2, 2};
     }
     // Warning: Before adding new configuration, make sure
     // that the shared memory of the GPU is large enough to handle the block dimensions
@@ -516,15 +516,29 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
         }
     } 
     else if constexpr(version == 1)
-    {
-        constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<256>();
-        assert(M % p.BM == 0);
-        assert(N % p.BN == 0);
-        assert(K % p.BK == 0);
+    {   
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<16>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
 
-        dim3 blocks(M / p.BM, N / p.BN);
-        matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                    <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+        }
+        else
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<256>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                    <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+        }
     }
 
     cudaError_t err = cudaDeviceSynchronize();
