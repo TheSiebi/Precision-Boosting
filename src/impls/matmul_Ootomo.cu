@@ -22,6 +22,86 @@
 
 #define WARP_SIZE 32
 
+struct matmulTemplateArgs
+{
+    int BM; // The number of rows of C a threadblock computes
+    int BN; // The number of cols of C a threadblock computes
+    int BK; // The dimension of the "dotproducts" a threadblock performs in each iteration 
+    int WM; // The number of rows of C a warp computes
+    int WN; // The number of cols of C a warp computes
+    int CHUNK_K; // BK / WMMA_K
+    int N_WARP_ROWS_PER_BLOCK; // How many rows of warps a threadblock gets assigned
+    int N_WARP_COLS_PER_BLOCK; // How many cols of warps a threadblock gets assigned
+    int N_WMMA_ROWS_PER_WARP; // The amount of tensor core multiplications required to cover WM
+    int N_WMMA_COLS_PER_WARP; // The amount of tensor core multiplications required to cover WN
+    int threadsPerBlock; // The amount of threads a threadblock needs
+};
+
+struct matmulScales
+{
+    int scaleBM;
+    int scaleBN;
+    int scaleChunk;
+    int scaleWM;
+    int scaleWN;
+};
+
+constexpr struct matmulScales getArgScales(int minSize) {
+    
+    if (minSize == 16)
+    {
+        return {1, 1, 1, 1, 1};
+    }
+    else if (minSize == 256)
+    {
+        return {8, 8, 2, 2, 2};
+    }
+    // Warning: Before adding new configuration, make sure
+    // that the shared memory of the GPU is large enough to handle the block dimensions
+
+    return {-1, -1, -1, -1, -1};
+}
+
+template<int minSize>
+constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
+{   
+    constexpr struct matmulScales scales = getArgScales(minSize);
+    constexpr int CHUNK_K = scales.scaleChunk;
+    constexpr int BM = WMMA_M * scales.scaleBM;
+    constexpr int BN = WMMA_N * scales.scaleBN;
+    constexpr int BK = WMMA_K * CHUNK_K;
+    
+    constexpr int WM = WMMA_M * scales.scaleWM;
+    constexpr int WN = WMMA_N * scales.scaleWN;
+
+    // the "warpdimensions" must divide the block dimensions
+    static_assert(BM % WM == 0);
+    static_assert(BN % WN == 0);
+    constexpr int N_WARP_ROWS_PER_BLOCK = BM / WM;
+    constexpr int N_WARP_COLS_PER_BLOCK = BN / WN;
+    constexpr int N_WMMA_ROWS_PER_WARP = WM / WMMA_M;
+    constexpr int N_WMMA_COLS_PER_WARP = WN / WMMA_N;
+    constexpr int threadsPerBlock = N_WARP_ROWS_PER_BLOCK * N_WARP_COLS_PER_BLOCK * WARP_SIZE;
+    // In each SMEM loading iteration, each thread loads 4 values from GMEM
+    // These asserts ensures that the loading loop does not convert divergent branches (i.e. each thread has 
+    // the same amount of values to load)
+    static_assert((BM * BK) % (4 * threadsPerBlock) == 0);
+    static_assert((BK * BN) % (4 * threadsPerBlock) == 0);
+    // These asserts ensure that in each SMEM loading iteration, the threads load N entire rows (and not a half row or something)
+    // of the shared memory
+    static_assert((4 * threadsPerBlock) % BK == 0);
+    static_assert((4 * threadsPerBlock) % BN == 0);
+
+    return {BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP, threadsPerBlock};
+}
+
+/**
+ * Given floats x, y, z, w, we have:
+ *  - x = x.x + dx.x / 2048
+ *  - y = x.y + dx.y / 2048
+ *  - z = y.x + dy.x / 2048
+ *  - w = y.y + dy.y / 2048
+ */
 struct split
 {
     // original terms
@@ -32,6 +112,9 @@ struct split
     half2 dy;
 };
 
+/**
+ * Perform vectorized split of a float4 into 8 halfs according to the Ootomo paper
+ */
 __device__ struct split split_Ootomo(float4 value)
 {
     float2 first = make_float2(value.x, value.y);
@@ -50,6 +133,9 @@ __device__ struct split split_Ootomo(float4 value)
     return split;
 }   
 
+/**
+ * Simple kernel that splits a float matrix into two half matrices according to the Ootoma paper
+ */
 __global__ void split_cuda(float *A, half *A0, half *A1)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -59,23 +145,26 @@ __global__ void split_cuda(float *A, half *A0, half *A1)
     A1[i] = (half)((value - (float)mainPart) * 2048.0f);
 }
 
+/**
+ * Simple kernel that performs the merge described in the Ootomo paper including the smallest term. 
+ */
 __global__ void merge_cuda(float *C, float *AB, float *dAB, float *AdB, float *dAdB)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     C[i] = AB[i] + (dAB[i] + AdB[i]) / 2048.0f + dAdB[i] / 4194304.0f;
 }
 
-
 /**
- * Kernel that performs half multiplication using tensore cores. Does not implement
- * specific Ootomo logic. 
+ * Kernel that performs half precision matrix multiplication using tensore cores. Does not implement
+ * specific Ootomo logic. In particular, it does NOT do the accumulation of values outside the tensor 
+ * cores to avoid RZ.
  */
 template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
           const int N_WARP_ROWS_PER_BLOCK,
           const int N_WARP_COLS_PER_BLOCK,
           const int N_WMMA_ROWS_PER_WARP,
           const int N_WMMA_COLS_PER_WARP>
-__global__ void matmul_v1_kernel(const half *A, const half *B, float *C, int M, int K, int N)
+__global__ void matmul_v0_kernel(const half *A, const half *B, float *C, int M, int K, int N)
 {
     using namespace nvcuda;
 
@@ -187,7 +276,7 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WARP_COLS_PER_BLOCK,
           const int N_WMMA_ROWS_PER_WARP,
           const int N_WMMA_COLS_PER_WARP>
-__global__ void matmul_v2_kernel(const float *A, const float *B, float *C, int M, int K, int N)
+__global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M, int K, int N)
 {
     using namespace nvcuda;
 
@@ -316,7 +405,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     half *deviceA[2], *deviceB[2];
     // {AB, dAB, AdB, dAdB}
     float *deviceC[4];
-    if constexpr(version == 1)
+    if constexpr(version == 0)
     {
         for(int i = 0; i < 2; i++)
         {
@@ -331,7 +420,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     cudaMemcpy(deviceAFull, A, AElems * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(deviceBFull, B, BElems * sizeof(float), cudaMemcpyHostToDevice);
 
-    if constexpr(version == 1)
+    if constexpr(version == 0)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
@@ -342,48 +431,44 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     }
 
     PROFILE_SEGMENTS_SWITCH("matmul");
-    if constexpr(version == 1)
+    if constexpr(version == 0)
     {
-        // If this is changed, ensure that shared memory is still large enough or 
-        // change shared memory settings with CUDA runtime API
-        constexpr int CHUNK_K = 2;
-        constexpr int BM = WMMA_M * 8;
-        constexpr int BN = WMMA_N * 8;
-        constexpr int BK = WMMA_K * CHUNK_K;
-        // The number of blocks must deivide the matrix dimensions
-        assert(M % BM == 0);
-        assert(N % BN == 0);
-        assert(K % BK == 0);
-        constexpr int WM = WMMA_M * 2;
-        constexpr int WN = WMMA_N * 2;
-        // the number of warps must divide the warp dimensions
-        static_assert(BM % WM == 0);
-        static_assert(BN % WN == 0);
-        constexpr int N_WARP_ROWS_PER_BLOCK = BM / WM;
-        constexpr int N_WARP_COLS_PER_BLOCK = BN / WN;
-        constexpr int N_WMMA_ROWS_PER_WARP = WM / WMMA_M;
-        constexpr int N_WMMA_COLS_PER_WARP = WN / WMMA_N;
-        constexpr int threadsPerBlock = N_WARP_ROWS_PER_BLOCK * N_WARP_COLS_PER_BLOCK * WARP_SIZE;
-        // In each SMEM loading iteration, each thread loads 4 values from GMEM
-        // These asserts ensures that the loading loop does not convert divergent branches (i.e. each thread has 
-        // the same amount of values to load)
-        static_assert((BM * BK) % (4 * threadsPerBlock) == 0);
-        static_assert((BK * BN) % (4 * threadsPerBlock) == 0);
-        // These asserts ensure that in each SMEM loading iteration, the threads load N entire rows (and not a half row or something)
-        // of the shared memory
-        static_assert((4 * threadsPerBlock) % BK == 0);
-        static_assert((4 * threadsPerBlock) % BN == 0);
-        dim3 blocks(M / BM, N / BN);
-        matmul_v1_kernel<BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP>
-            <<<blocks, threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-        matmul_v1_kernel<BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP>
-            <<<blocks, threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
-        matmul_v1_kernel<BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP>
-            <<<blocks, threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
-        matmul_v1_kernel<BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP>
-            <<<blocks, threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<16>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+        } 
+        else 
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<256>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+        }
     } 
-    else if (version == 2)
+    else if constexpr(version == 1)
     {
         // ...
     }
@@ -393,7 +478,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
         printf("CUDA error: %s\n", cudaGetErrorString(err));
     }
 
-    if constexpr(version == 1)
+    if constexpr(version == 0)
     {
         PROFILE_SEGMENTS_SWITCH("merge");
         int threadsPerBlock = 256;
@@ -411,7 +496,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     cudaFree(deviceBFull);
     cudaFree(deviceCFull);
 
-    if constexpr(version == 1)
+    if constexpr(version == 0)
     {
         for(int i = 0; i < 2; i++)
         {
@@ -425,13 +510,12 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
-// Note: Does currently not yet work for matrices smaller than 256x256
+void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
+{
+    matmul_Oootomo<0>(A, B, C, M, K, N);
+}
+
 void matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<1>(A, B, C, M, K, N);
-}
-
-void matmul_Oootomo_v2(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_Oootomo<2>(A, B, C, M, K, N);
 }

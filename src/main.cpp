@@ -34,8 +34,8 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Very basic Ootomo using CUDA",
     },
     {
-        .function = matmul_Oootomo_v1,
-        .name = "Ootomo v1",
+        .function = matmul_Oootomo_v0,
+        .name = "Ootomo v0",
         .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
         .countFlops = matmul_flopcount_32
     },
@@ -210,10 +210,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
 
     // Parameters
     // srand(time(NULL));
-    // const size_t M = 48, K = 32, N = 16;
-    // WARNING: trying matrix sizes < 256 will (probably) cause compilation failure at worst and 
-    // test failure at best for Ootomo_v1, as this is currently not yet supported
-    const size_t M = 256, K = 256, N = 256;
+    const size_t M = 1024, K = 512, N = 256;
     // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
 
     // Allocate matrices
