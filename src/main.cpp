@@ -197,7 +197,7 @@ void printMatrix(T *A, int M, int N)
 template<class T>
 void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
 {
-    const T EPSILON = 0.002;
+    const T EPSILON = 1.e-4;
     const int FUNCTION_NAME_WIDTH = 26;
     const auto count_digits = [](int num)
     {

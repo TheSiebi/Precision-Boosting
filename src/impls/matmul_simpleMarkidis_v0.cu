@@ -16,7 +16,7 @@ __global__ void matmul_v0(half *A, half *B, float *C, int M, int K, int N)
     float result = 0.0;
     for (int k = 0; k < K; k++) 
     {
-        result += (float)(A[m*K + k] * B[k*N + n]);
+        result += (float)A[m*K + k] * (float)B[k*N + n];
     }
     C[m*N + n] = result;
 }
