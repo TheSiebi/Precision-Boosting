@@ -6,6 +6,7 @@
 #include <cuda_fp16.h>
 #include <mma.h>
 
+#include "../cuda_utils.h"
 #include "../matmul.h"
 #include "../profiler.h"
 
@@ -45,27 +46,19 @@ __global__ void matmul_v1(half *A, half *B, float *C, int M, int K, int N)
     wmma::store_matrix_sync(C + warpM * N + warpN, cFrag, N, wmma::mem_row_major);
 }
 
-__global__ void split_cuda(float *A, half *A0, half *A1, int M, int N)
+__global__ void split_cuda(float *A, half *A0, half *A1, int N)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    float value = A[i];
-    half mainPart = (half)value;
-    A0[i] = mainPart;
-    A1[i] = (half)(value - (float)mainPart);
+    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    if(i < N)
+    {
+        float value = A[i];
+        half mainPart = (half)value;
+        A0[i] = mainPart;
+        A1[i] = (half)(value - (float)mainPart);
+    }
 }
 
-void split(const float *A, void *A16, void *dA16, int M, int N)
-{
-    half *_A16 = (half *) A16;
-    half *_dA16 = (half *) dA16;
-    for (int i = 0; i < M * N; i++) {
-        _A16[i] = __float2half(A[i]);
-        float reconstructed = __half2float(_A16[i]);
-        _dA16[i] = __float2half(A[i] - reconstructed);
-    }    
-}
-
-template<int version, bool splitOnCPU>
+template<int version>
 void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N) 
 {
     assert((M % 16) == 0);
@@ -78,10 +71,6 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
     size_t BSize = K * N * sizeof(half);
     size_t CSize = M * N * sizeof(float);
     
-    half *A0 = (half*)malloc(ASize);
-    half *A1 = (half*)malloc(ASize);
-    half *B0 = (half*)malloc(BSize);
-    half *B1 = (half*)malloc(BSize);
     float *hostC[4];
     for(int i = 0; i < 4; i++)
         hostC[i] = (float*)malloc(CSize);
@@ -89,44 +78,33 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
 
     PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
-    float *deviceAFull, *deviceBFull;
     half *deviceA[2], *deviceB[2];
     float *deviceC[4];
+    float *deviceAFull, *deviceBFull;
     for(int i = 0; i < 2; i++)
     {
-        cudaMalloc(&deviceA[i], ASize);
-        cudaMalloc(&deviceB[i], BSize);
+        cudaGetLastError();
+        PRINT_ON_ERROR(cudaMalloc(&deviceA[i], ASize));
+        PRINT_ON_ERROR(cudaMalloc(&deviceB[i], BSize));
     }
     for(int i = 0; i < 4; i++)
-        cudaMalloc(&deviceC[i], CSize);
-    cudaMalloc(&deviceAFull, M*K*sizeof(float));
-    cudaMalloc(&deviceBFull, K*N*sizeof(float));
+        PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CSize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, M*K*sizeof(float)));
+    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, K*N*sizeof(float)));
 
-    if constexpr(splitOnCPU)
-    {
-        PROFILE_SEGMENTS_SWITCH("split");
-        split(A, A0, A1, M, K);
-        split(B, B0, B1, K, N);
+    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
 
-        PROFILE_SEGMENTS_SWITCH("memcpy host2device");
-        cudaMemcpy(deviceA[0], A0, ASize, cudaMemcpyHostToDevice);
-        cudaMemcpy(deviceA[1], A1, ASize, cudaMemcpyHostToDevice);
-        cudaMemcpy(deviceB[0], B0, BSize, cudaMemcpyHostToDevice);
-        cudaMemcpy(deviceB[1], B1, BSize, cudaMemcpyHostToDevice);
-    }
-    else
-    {
-        PROFILE_SEGMENTS_SWITCH("memcpy host2device");
-        cudaMemcpy(deviceAFull, A, M*K*sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(deviceBFull, B, K*N*sizeof(float), cudaMemcpyHostToDevice);
+    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, M*K*sizeof(float), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, K*N*sizeof(float), cudaMemcpyHostToDevice));
 
-        PROFILE_SEGMENTS_SWITCH("split");
-        split_cuda<<<256, M*K/256>>>(deviceAFull, deviceA[0], deviceA[1], M, K);
-        split_cuda<<<256, K*N/256>>>(deviceBFull, deviceB[0], deviceB[1], K, N);
+    PROFILE_SEGMENTS_SWITCH("split");
 
-        cudaDeviceSynchronize();
-    }
+    split_cuda<<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA[0], deviceA[1], M * K);
+    PRINT_ON_ERROR(cudaGetLastError());
+    split_cuda<<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB[0], deviceB[1], K * N);
+    PRINT_ON_ERROR(cudaGetLastError());
 
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("matmul");
     if constexpr (version == 0)
@@ -134,53 +112,55 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
         dim3 threadsPerBlock(16, 16);
         dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
         for(int i = 0; i < 4; i++)
+        {
             matmul_v0<<<blocks, threadsPerBlock>>>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
     }
     else if constexpr (version == 1)
     {
         dim3 threadsPerBlock(32, 1);
         dim3 blocks(M/16, N/16);
         for(int i = 0; i < 4; i++)
+        {
             matmul_v1<<<blocks, threadsPerBlock>>>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
     }
-
-    cudaDeviceSynchronize();
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
+
     for(int i = 0; i < 4; i++)
-        cudaMemcpy(hostC[i], deviceC[i], CSize, cudaMemcpyDeviceToHost);
+        PRINT_ON_ERROR(cudaMemcpy(hostC[i], deviceC[i], CSize, cudaMemcpyDeviceToHost));
 
     PROFILE_SEGMENTS_SWITCH("merge");
+
     for(int i = 0; i < M * N; i++)
         C[i] = hostC[0][i] + hostC[1][i] + hostC[2][i] + hostC[3][i];
 
     PROFILE_SEGMENTS_SWITCH("free");
-    free(A0);
-    free(A1);
-    free(B0);
-    free(B1);
-    for(int i = 0; i < 4; i++)
-        free(hostC[i]);
 
     for(int i = 0; i < 2; i++)
     {
-        cudaFree(&deviceA[i]);
-        cudaFree(&deviceB[i]);
+        PRINT_ON_ERROR(cudaFree(deviceA[i]));
+        PRINT_ON_ERROR(cudaFree(deviceB[i]));
     }
     for(int i = 0; i < 4; i++)
-        cudaFree(&deviceC[i]);
-    cudaFree(deviceAFull);
-    cudaFree(deviceBFull);
+        PRINT_ON_ERROR(cudaFree(deviceC[i]));
+    PRINT_ON_ERROR(cudaFree(deviceAFull));
+    PRINT_ON_ERROR(cudaFree(deviceBFull));
+
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
 void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 {
-    matmul_simpleMarkidis<0, false>(A, B, C, M, K, N);
+    matmul_simpleMarkidis<0>(A, B, C, M, K, N);
 }
 
 void matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
 {
-    matmul_simpleMarkidis<1, false>(A, B, C, M, K, N);
+    matmul_simpleMarkidis<1>(A, B, C, M, K, N);
 }
 

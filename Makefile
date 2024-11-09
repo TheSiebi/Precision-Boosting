@@ -45,7 +45,7 @@ build/matmul_cuda_v0.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
 
 build/matmul_simpleMarkidis_v0.o:
-	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleMarkidis_v0.cu -o $@
+	nvcc $(CUDA_DEBUG_FLAGS) -c src/impls/matmul_simpleMarkidis_v0.cu -o $@
 
 build/matmul_simpleOotomo_v0.o:
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleOotomo_v0.cu -o $@
