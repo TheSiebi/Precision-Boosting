@@ -6,7 +6,7 @@ CPP_FLAGS=$(BASE_FLAGS) -std=gnu++2a -Wno-missing-field-initializers
 OPT_FLAGS=$(CPP_FLAGS) -O3
 DEBUG_FLAGS=$(CPP_FLAGS) -O0 -fsanitize=address
 CUDA_FLAGS= -g -arch=sm_70
-CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G
+CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G -Xptxas -v
 
 CC=gcc
 CPP=g++
