@@ -40,6 +40,12 @@ matmul_variant<float> matmulVariants32[] =
         .countFlops = matmul_flopcount_32
     },
     {
+        .function = matmul_Oootomo_v1,
+        .name = "Ootomo v1",
+        .description = "Ootomo algorithm as described by Code3 in the paper",
+        .countFlops = matmul_flopcount_32
+    },
+    {
         .function = matmul_cuBLAS32,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
@@ -363,11 +369,11 @@ int main(int argc, char *argv[])
         {
             testSplitCorrectness(&splitVariants[i]);
         }
-        profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
-        profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
-        profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
+        // profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
+        // profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
+        // profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
+        // profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
+        // profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         // TODO: profiling cuBLAS32 gives me a huge time, not sure why
         //profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
 

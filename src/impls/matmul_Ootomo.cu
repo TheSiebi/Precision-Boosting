@@ -96,44 +96,6 @@ constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
 }
 
 /**
- * Given floats x, y, z, w, we have:
- *  - x = x.x + dx.x / 2048
- *  - y = x.y + dx.y / 2048
- *  - z = y.x + dy.x / 2048
- *  - w = y.y + dy.y / 2048
- */
-struct split
-{
-    // original terms
-    half2 x;
-    half2 y;
-    // error terms
-    half2 dx;
-    half2 dy;
-};
-
-/**
- * Perform vectorized split of a float4 into 8 halfs according to the Ootomo paper
- */
-__device__ struct split split_Ootomo(float4 value)
-{
-    float2 first = make_float2(value.x, value.y);
-    float2 second = make_float2(value.z, value.w);
-    struct split split;
-
-    split.x = __float22half2_rn(first);
-    split.y = __float22half2_rn(second);
-
-    float2 reconstructed = __half22float2(split.x);
-    split.dx = __float22half2_rn(make_float2((first.x - reconstructed.x) * 2048, (first.y - reconstructed.y) * 2048));
-
-    reconstructed = __half22float2(split.y);
-    split.dy = __float22half2_rn(make_float2((second.x - reconstructed.x) * 2048, (second.y - reconstructed.y) * 2048));
-
-    return split;
-}   
-
-/**
  * Simple kernel that splits a float matrix into two half matrices according to the Ootoma paper
  */
 __global__ void split_cuda(float *A, half *A0, half *A1)
@@ -270,7 +232,68 @@ __global__ void matmul_v0_kernel(const half *A, const half *B, float *C, int M, 
     }
 }
 
-// Code adapted from: https://github.com/siboehm/SGEMM_CUDA/tree/master
+/**
+ * Given floats x, y, z, w, we have:
+ *  - x = x.x + dx.x / 2048
+ *  - y = x.y + dx.y / 2048
+ *  - z = y.x + dy.x / 2048
+ *  - w = y.y + dy.y / 2048
+ */
+struct split
+{
+    // original terms
+    half2 x;
+    half2 y;
+    // error terms
+    half2 dx;
+    half2 dy;
+};
+
+/**
+ * Perform vectorized split of a float4 into 8 halfs according to the Ootomo paper
+ */
+__device__ __forceinline__ struct split split_Ootomo(float4 value)
+{
+    float2 first = make_float2(value.x, value.y);
+    float2 second = make_float2(value.z, value.w);
+    struct split split;
+
+    split.x = __float22half2_rn(first);
+    split.y = __float22half2_rn(second);
+
+    float2 reconstructed = __half22float2(split.x);
+    split.dx = __float22half2_rn(make_float2((first.x - reconstructed.x) * 2048, (first.y - reconstructed.y) * 2048));
+
+    reconstructed = __half22float2(split.y);
+    split.dy = __float22half2_rn(make_float2((second.x - reconstructed.x) * 2048, (second.y - reconstructed.y) * 2048));
+
+    return split;
+}   
+
+/**
+ * Performs a vectorized 4 element load from GMEM, splits the obtained values into 8 halfs according to the Ootomo paper
+ * and saves them to SMEM
+ */
+template<typename loadType, typename matType>
+__device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int innerRow, int rowOffset, int innerCol, half *As, half *dAs, int AsCols)
+{
+    loadType tmp = *(reinterpret_cast<const loadType *>(A + (innerRow + rowOffset) * ACols + innerCol * 4));
+    struct split tmp_split = split_Ootomo(tmp);
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.x.x;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.x.y;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.y.x;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.y.y;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.dx.x;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.dx.y;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.dy.x;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.dy.y;
+
+    // assert(fabs(((float)tmp_split.x.x + (float)tmp_split.dx.x / 2048.0f) - tmp.x) < 0.001f);
+    // assert(fabs(((float)tmp_split.x.y + (float)tmp_split.dx.y / 2048.0f) - tmp.y) < 0.001f);
+    // assert(fabs(((float)tmp_split.y.x + (float)tmp_split.dy.x / 2048.0f) - tmp.z) < 0.001f);
+    // assert(fabs(((float)tmp_split.y.y + (float)tmp_split.dy.y / 2048.0f) - tmp.w) < 0.001f);  
+}
+
 template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
           const int N_WARP_ROWS_PER_BLOCK,
           const int N_WARP_COLS_PER_BLOCK,
@@ -302,14 +325,19 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
     const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
 
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag;
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> daFrag;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> dbFrag;
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> dcFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> tmpFrag;
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
     {
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
         {
             wmma::fill_fragment(cFrag[i][j], 0.0f);
+            wmma::fill_fragment(dcFrag[i][j], 0.0f);
         }
     }
 
@@ -328,32 +356,14 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
-        // populate SMEM cache using vectorized loads
+        // populate SMEM cache
         for (int loadOffset = 0; loadOffset < BM; loadOffset += strideA)
         {
-            float4 tmp = *(reinterpret_cast<const float4 *>(A + (innerRowA + loadOffset) * K + innerColA * 4));
-            struct split tmp_split = split_Ootomo(tmp);
-            As[(innerRowA + loadOffset) * BK + innerColA * 4 + 0] = tmp_split.x.x;
-            As[(innerRowA + loadOffset) * BK + innerColA * 4 + 1] = tmp_split.x.y;
-            As[(innerRowA + loadOffset) * BK + innerColA * 4 + 2] = tmp_split.y.x;
-            As[(innerRowA + loadOffset) * BK + innerColA * 4 + 3] = tmp_split.y.y;
-            dAs[(innerRowA + loadOffset) * BK + innerColA * 4 + 0] = tmp_split.dx.x;
-            dAs[(innerRowA + loadOffset) * BK + innerColA * 4 + 1] = tmp_split.dx.y;
-            dAs[(innerRowA + loadOffset) * BK + innerColA * 4 + 2] = tmp_split.dy.x;
-            dAs[(innerRowA + loadOffset) * BK + innerColA * 4 + 3] = tmp_split.dy.y;
+            loadAndSplit<float4, float>(A, K, innerRowA, loadOffset, innerColA, As, dAs, BK);
         }
         for (int loadOffset = 0; loadOffset < BK; loadOffset += strideB)
         {
-            float4 tmp = *(reinterpret_cast<const float4 *>(B + (innerRowB + loadOffset) * N + innerColB * 4));
-            struct split tmp_split = split_Ootomo(tmp);
-            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 0] = tmp_split.x.x;
-            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 1] = tmp_split.x.y;
-            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 2] = tmp_split.y.x;
-            Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 3] = tmp_split.y.y;
-            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 0] = tmp_split.dx.x;
-            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 1] = tmp_split.dx.y;
-            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 2] = tmp_split.dy.x;
-            dBs[(innerRowB + loadOffset) * BN + innerColB * 4 + 3] = tmp_split.dy.y;
+            loadAndSplit<float4, float>(B, N, innerRowB, loadOffset, innerColB, Bs, dBs, BN);
         }
 
         __syncthreads();
@@ -365,22 +375,59 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
         // start of data belonging to respective warp
         half *warpAs = &As[warpRow * WM * BK];
         half *warpBs = &Bs[warpCol * WN];
-
+        half *warpdAs = &dAs[warpRow * WM * BK];
+        half *warpdBs = &dBs[warpCol * WN];
+        
+        // calculate mmul
         for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
         {
             for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
             {
                 for (int chunk = 0; chunk < CHUNK_K; chunk++)
                 {
-                    wmma::load_matrix_sync(aFrag, warpAs + CHUNK_K * WMMA_K, BK);
-                    wmma::load_matrix_sync(bFrag, warpBs + CHUNK_K * WMMA_K * BN, BN);
+                    wmma::load_matrix_sync(aFrag, warpAs + chunk * WMMA_K, BK);
+                    wmma::load_matrix_sync(bFrag, warpBs + chunk * WMMA_K * BN, BN);
 
-                    wmma::mma_sync(cFrag[tileRow][tileCol], aFrag, bFrag, cFrag[tileRow][tileCol]);
+                    wmma::fill_fragment(tmpFrag, 0.0f);
+                    wmma::mma_sync(tmpFrag, aFrag, bFrag, tmpFrag);
+
+                    for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+                    {
+                        cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
+                    }
+                    
+                    // matrices for error correction can be directly accumulated in the tensor core
+                    wmma::load_matrix_sync(daFrag, warpdAs + chunk * WMMA_K, BK);
+                    wmma::load_matrix_sync(dbFrag, warpdBs + chunk * WMMA_K * BN, BN);
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], daFrag, bFrag, dcFrag[tileRow][tileCol]);
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], aFrag, dbFrag, dcFrag[tileRow][tileCol]);
+
                 }
                 warpBs += WMMA_N;
+                warpdBs += WMMA_N;
             }
+            warpBs = &Bs[warpCol * WN];
+            warpdBs = &dBs[warpCol * WN];
             warpAs += WMMA_M * BK;
+            warpdAs += WMMA_M * BK;
         }
+    }
+
+    // Store results back to C matrix
+    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {   
+            // perform merge according to Ootomo paper
+            for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+            {
+                cFrag[tileRow][tileCol].x[i] += dcFrag[tileRow][tileCol].x[i] / 2048.0f;
+            }
+
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
     }
 }
 
@@ -470,7 +517,14 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     } 
     else if constexpr(version == 1)
     {
-        // ...
+        constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<256>();
+        assert(M % p.BM == 0);
+        assert(N % p.BN == 0);
+        assert(K % p.BK == 0);
+
+        dim3 blocks(M / p.BM, N / p.BN);
+        matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
     }
 
     cudaError_t err = cudaDeviceSynchronize();
