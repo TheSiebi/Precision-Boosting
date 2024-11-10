@@ -33,16 +33,12 @@ matmul_variant<float> matmulVariants32[] =
         .name = "Simple Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
     },
-    //NOTE(max): this version causes multiple cuda errors and influences the
-    //behaviour of implementations that get executed after this one
-    /*
     {
         .function = matmul_Oootomo_v0,
         .name = "Ootomo v0",
         .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
         .countFlops = matmul_flopcount_32
     },
-    */
     {
         .function = matmul_Oootomo_v1,
         .name = "Ootomo v1",
@@ -372,13 +368,14 @@ int main(int argc, char *argv[])
         {
             testSplitCorrectness(&splitVariants[i]);
         }
+        
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
-        // TODO: profiling cuBLAS32 gives me a huge time, not sure why
-        //profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
     }
     else
     {

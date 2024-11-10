@@ -6,6 +6,7 @@
 #include <cuda_fp16.h>
 #include <mma.h>
 
+#include "../cuda_utils.h"
 #include "../matmul.h"
 #include "../profiler.h"
 
@@ -447,9 +448,9 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     int BElems = K * N;
     int CElems = M * N;
     float *deviceAFull, *deviceBFull, *deviceCFull;
-    cudaMalloc(&deviceAFull, AElems * sizeof(float));
-    cudaMalloc(&deviceBFull, BElems * sizeof(float));
-    cudaMalloc(&deviceCFull, CElems * sizeof(float));
+    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, AElems * sizeof(float)));
+    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BElems * sizeof(float)));
+    PRINT_ON_ERROR(cudaMalloc(&deviceCFull, CElems * sizeof(float)));
 
     // these identifiers are just outside the if because otherwise, compilation does not work
     half *deviceA[2], *deviceB[2];
@@ -459,25 +460,27 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     {
         for(int i = 0; i < 2; i++)
         {
-            cudaMalloc(&deviceA[i], AElems * sizeof(half));
-            cudaMalloc(&deviceB[i], BElems * sizeof(half));
+            PRINT_ON_ERROR(cudaMalloc(&deviceA[i], AElems * sizeof(half)));
+            PRINT_ON_ERROR(cudaMalloc(&deviceB[i], BElems * sizeof(half)));
         }
         for(int i = 0; i < 4; i++)
-            cudaMalloc(&deviceC[i], CElems * sizeof(float));
+            PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CElems * sizeof(float)));
     }
 
     PROFILE_SEGMENTS_SWITCH("memcpy host2device");
-    cudaMemcpy(deviceAFull, A, AElems * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(deviceBFull, B, BElems * sizeof(float), cudaMemcpyHostToDevice);
+    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, AElems * sizeof(float), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BElems * sizeof(float), cudaMemcpyHostToDevice));
 
     if constexpr(version == 0)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
         split_cuda<<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
         split_cuda<<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
 
-        cudaDeviceSynchronize();
+        PRINT_ON_ERROR(cudaDeviceSynchronize());
     }
 
     PROFILE_SEGMENTS_SWITCH("matmul");
@@ -493,12 +496,16 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
             dim3 blocks(M / p.BM, N / p.BN);
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
         } 
         else 
         {
@@ -510,12 +517,16 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
             dim3 blocks(M / p.BM, N / p.BN);
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
             matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                 <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
         }
     } 
     else if constexpr(version == 1)
@@ -530,6 +541,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
             dim3 blocks(M / p.BM, N / p.BN);
             matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                     <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
         }
         else
         {
@@ -541,41 +553,40 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
             dim3 blocks(M / p.BM, N / p.BN);
             matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                     <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
         }
     }
 
-    cudaError_t err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        printf("CUDA error: %s\n", cudaGetErrorString(err));
-    }
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     if constexpr(version == 0)
     {
         PROFILE_SEGMENTS_SWITCH("merge");
         int threadsPerBlock = 256;
-        merge_cuda<<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        merge_cuda<<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        PRINT_ON_ERROR(cudaGetLastError());
 
-        cudaDeviceSynchronize();
+        PRINT_ON_ERROR(cudaDeviceSynchronize());
     }
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
-    cudaMemcpy(C, deviceCFull, CElems * sizeof(float), cudaMemcpyDeviceToHost);
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceCFull, CElems * sizeof(float), cudaMemcpyDeviceToHost));
 
 
     PROFILE_SEGMENTS_SWITCH("free");
-    cudaFree(deviceAFull);
-    cudaFree(deviceBFull);
-    cudaFree(deviceCFull);
+    PRINT_ON_ERROR(cudaFree(deviceAFull));
+    PRINT_ON_ERROR(cudaFree(deviceBFull));
+    PRINT_ON_ERROR(cudaFree(deviceCFull));
 
     if constexpr(version == 0)
     {
         for(int i = 0; i < 2; i++)
         {
-            cudaFree(deviceA[i]);
-            cudaFree(deviceB[i]);
+            PRINT_ON_ERROR(cudaFree(deviceA[i]));
+            PRINT_ON_ERROR(cudaFree(deviceB[i]));
         }
         for(int i = 0; i < 4; i++)
-            cudaFree(deviceC[i]);
+            PRINT_ON_ERROR(cudaFree(deviceC[i]));
     }
 
     PROFILE_SEGMENT_FUNCTION_END();
