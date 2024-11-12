@@ -31,7 +31,13 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_simpleMarkidis_v2,
         .name = "Simple Markidis v2",
-        .description = "Simple markidis with block blocking",
+        .description = "Simple markidis with multiple warps per block",
+        .countFlops = matmul_flopcount_32,
+    },
+    {
+        .function = matmul_simpleMarkidis_v3,
+        .name = "Simple Markidis v3",
+        .description = "Simple markidis with shared memory",
         .countFlops = matmul_flopcount_32,
     },
     {
@@ -375,17 +381,19 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i]);
         }
         
+        /*
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
-
+        */
         profile(matmulVariants32[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         /*
-        profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         */
+        profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
     }
     else
     {

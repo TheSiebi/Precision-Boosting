@@ -19,7 +19,7 @@ OBJ_FILES+=build/matmul_Ootomo.o
 OBJ_FILES+=build/matmul_cuBLAS.o
 
 
-.PHONY: $(OBJ_FILES)
+.PHONY: build
 
 
 build: prepareBuild $(OBJ_FILES)
@@ -41,28 +41,28 @@ build/rand.o: src/rand.cpp
 build/cJSON.o: lib/cjson/cJSON.c
 	$(CC) $(BASE_FLAGS) -O3 -c lib/cjson/cJSON.c -o $@
 	
-build/matmul_cuda_v0.o:
+build/matmul_cuda_v0.o: src/impls/matmul_cuda_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
 
-build/matmul_simpleMarkidis_v0.o:
+build/matmul_simpleMarkidis_v0.o: src/impls/matmul_simpleMarkidis_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleMarkidis_v0.cu -o $@
 
-build/matmul_simpleOotomo_v0.o:
+build/matmul_simpleOotomo_v0.o: src/impls/matmul_simpleOotomo_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleOotomo_v0.cu -o $@
 
-build/matmul_Ootomo.o:
+build/matmul_Ootomo.o: src/impls/matmul_Ootomo.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_Ootomo.cu -o $@
 
-build/matmul_cuda_v1.o:
+build/matmul_cuda_v1.o: src/impls/matmul_cuda_v1.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v1.cu -o $@
 
-build/split_v0.o:
+build/split_v0.o: src/impls/split_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/split_v0.cu -o $@
 
-build/merge_accumulate_v0.o:
+build/merge_accumulate_v0.o: src/impls/merge_accumulate_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/merge_accumulate_v0.cu -o $@
 
-build/matmul_cuBLAS.o:
+build/matmul_cuBLAS.o: src/impls/matmul_cuBLAS.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuBLAS.cu -o $@
 
 run:
