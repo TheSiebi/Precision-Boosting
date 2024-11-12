@@ -45,6 +45,56 @@ __global__ void matmul_v1(half *A, half *B, float *C, int M, int K, int N)
 
     wmma::store_matrix_sync(C + warpM * N + warpN, cFrag, N, wmma::mem_row_major);
 }
+//NOTE(max): this is constant for now, if we have architectures that have
+//different warp sizes we need to make this dynamic
+#define WARP_SIZE 32
+
+//blockDim.x == warpSize
+//blockDim.y == BlockSizeN / FragSizeN
+//blockDim.z == BlockSizeM / FragSizeM
+//gridDim.x == RoundUp(N / BlockSizeN)
+//gridDim.y == RoundUp(M / BlockSizeM)
+template<int BlockSizeM, int BlockSizeN, int KStep, 
+         int FragSizeM, int FragSizeK, int FragSizeN>
+__global__ void matmul_v2(half *A, half *B, float *C, int M, int K, int N)
+{
+    using namespace nvcuda;
+
+    //__shared__ half Shared_A[BlockSizeM][KStep];
+    //__shared__ half Shared_B[KStep][BlockSizeN];
+
+    const int scalar_blockMBase = blockIdx.y * BlockSizeM;
+    const int scalar_blockNBase = blockIdx.x * BlockSizeN;
+    const int scalar_blockBaseA = scalar_blockMBase * K;
+    const int scalar_blockBaseB = scalar_blockNBase;
+    const int scalar_blockBaseC = scalar_blockMBase * N + scalar_blockNBase;
+
+    const int warpNOffset = threadIdx.y * FragSizeN;
+    const int warpMOffset = threadIdx.z * FragSizeM;
+
+    wmma::fragment<wmma::matrix_a, FragSizeM, FragSizeN, FragSizeK, half, wmma::row_major> aFrag;
+    wmma::fragment<wmma::matrix_b, FragSizeM, FragSizeN, FragSizeK, half, wmma::row_major> bFrag;
+    wmma::fragment<wmma::accumulator, FragSizeM, FragSizeN, FragSizeK, float> cFrag;
+
+    wmma::fill_fragment(cFrag, 0);
+
+    for (int kBase = 0; kBase < K; kBase += KStep) 
+    {
+        for(int kOffset = 0; kOffset < KStep; kOffset += FragSizeK)
+        {
+            int k = kBase + kOffset;
+            int offsetA = scalar_blockBaseA + warpMOffset * K + k;
+            int offsetB = scalar_blockBaseB + k * N + warpNOffset;
+            wmma::load_matrix_sync(aFrag, A + offsetA, K);
+            wmma::load_matrix_sync(bFrag, B + offsetB, N);
+
+            wmma::mma_sync(cFrag, aFrag, bFrag, cFrag);
+        }
+    }
+
+    int offsetC = scalar_blockBaseC + warpMOffset * N + warpNOffset;
+    wmma::store_matrix_sync(C + offsetC, cFrag, N, wmma::mem_row_major);
+}
 
 __global__ void split_cuda(float *A, half *A0, half *A1, int N)
 {
@@ -127,6 +177,25 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
             PRINT_ON_ERROR(cudaGetLastError());
         }
     }
+    else if constexpr (version == 2)
+    {
+        const int BLOCK_SIZE_M = 64;
+        const int BLOCK_SIZE_N = 64;
+        const int K_STEP       = 16;
+        const int FRAG_SIZE_M  = 16;
+        const int FRAG_SIZE_K  = 16;
+        const int FRAG_SIZE_N  = 16;
+        dim3 threadsPerBlock(WARP_SIZE, BLOCK_SIZE_N / FRAG_SIZE_N, BLOCK_SIZE_M / FRAG_SIZE_M);
+        dim3 blocks(DivRoundUp(N, BLOCK_SIZE_N), DivRoundUp(M, BLOCK_SIZE_M));
+        for(int i = 0; i < 4; i++)
+        {
+            matmul_v2<BLOCK_SIZE_M, BLOCK_SIZE_N, K_STEP,
+                      FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                     <<<blocks, threadsPerBlock>>>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
+    }
+
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
@@ -162,5 +231,10 @@ void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 void matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<1>(A, B, C, M, K, N);
+}
+
+void matmul_simpleMarkidis_v2(float *A, float *B, float *C, int M, int K, int N)
+{
+    matmul_simpleMarkidis<2>(A, B, C, M, K, N);
 }
 

@@ -29,6 +29,12 @@ matmul_variant<float> matmulVariants32[] =
         .countFlops = matmul_flopcount_32,
     },
     {
+        .function = matmul_simpleMarkidis_v2,
+        .name = "Simple Markidis v2",
+        .description = "Simple markidis with block blocking",
+        .countFlops = matmul_flopcount_32,
+    },
+    {
         .function = matmul_simpleOotomo_v0,
         .name = "Simple Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
@@ -371,11 +377,15 @@ int main(int argc, char *argv[])
         
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
+
         profile(matmulVariants32[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
+        /*
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
+        */
     }
     else
     {
