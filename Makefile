@@ -11,7 +11,7 @@ CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G -Xptxas -v
 CC=gcc
 CPP=g++
 
-OBJ_FILES=build/profiler.o build/timer.o build/rand.o build/cJSON.o 
+OBJ_FILES=build/profiler.o build/timer.o build/rand.o build/precision.o build/cJSON.o 
 OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o
 OBJ_FILES+=build/matmul_simpleMarkidis_v0.o
 OBJ_FILES+=build/matmul_simpleOotomo_v0.o
@@ -38,9 +38,12 @@ build/timer.o: src/timer.cpp
 build/rand.o: src/rand.cpp
 	$(CPP) $(OPT_FLAGS) -c src/rand.cpp -o $@
 
+build/precision.o: src/precision.cpp
+	$(CPP) $(OPT_FLAGS) -c src/precision.cpp -o $@
+
 build/cJSON.o: lib/cjson/cJSON.c
 	$(CC) $(BASE_FLAGS) -O3 -c lib/cjson/cJSON.c -o $@
-	
+
 build/matmul_cuda_v0.o: src/impls/matmul_cuda_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
 

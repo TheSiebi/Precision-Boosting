@@ -33,6 +33,10 @@ struct LCG rng_seeded(uint64_t seed);
 uint32_t next(struct LCG *rng);
 /// Get next random 64-bit value from the RNG
 uint64_t next_u64(struct LCG *rng);
+uint32_t next_below(struct LCG *rng, uint32_t max);
+int next_int(struct LCG *rng, int min, int max);
+/// Get next random bool from the RNG, which is true with probability p
+bool next_bool(struct LCG *rng, float p);
 
 /// Return a 32-bit float value uniformly distributed between 0 and 1
 float next_float(struct LCG *rng);
@@ -105,5 +109,10 @@ void gen_urand(struct LCG *rng, T *ts, int size, int min_exp, int max_exp)
         assert(false);
     }
 }
+
+void fill_matrices_ootomo_type1(struct LCG *rng, float *A, float *B, int size);
+void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size);
+void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size);
+void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size);
 
 #endif // RAND_H

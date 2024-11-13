@@ -81,6 +81,11 @@ int next_int(struct LCG *rng, int min, int max) {
     int32_t result = min + (int32_t) rand;
     return (int) result;
 }
+bool next_bool(struct LCG *rng, float p) {
+    assert(0.0 <= p && p <= 1.0);
+    float r = next_float(rng);
+    return r <= p;
+}
 
 float next_float(struct LCG *rng) {
     // Generate a float uniformly distributed between 0 and 1
@@ -212,4 +217,50 @@ void gen_doubles_exp_rand(struct LCG *rng, double *ds, int size, int min_exp, in
     for (int i = 0; i < size; i++) {
         ds[i] = next_double_exp_rand(rng, (int16_t) min_exp, (int16_t) max_exp);
     }
+}
+
+void fill_matrices_ootomo_type1(struct LCG *rng, float *A, float *B, int size_a, int size_b) {
+    // Both A and B are exp_rand(-15, 14)
+    gen_floats_exp_rand(rng, A, size_a, -15, 14);
+    gen_floats_exp_rand(rng, B, size_b, -15, 14);
+}
+void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size_a, int size_b) {
+    // One of A or B is exp_rand(-15, 14), the other is exp_rand(-100, -35)
+    bool coinflip = next_bool(rng, 0.5);
+    float *biig_exp = coinflip ? A : B;
+    float *smol_exp = coinflip ? B : A;
+    int big_size = coinflip ? size_a : size_b;
+    int smol_size = coinflip ? size_b : size_a;
+    gen_floats_exp_rand(rng, biig_exp, big_size, -15, 14);
+    gen_floats_exp_rand(rng, smol_exp, smol_size, -100, -35);
+}
+void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size_a, int size_b) {
+    // Both A and B are exp_rand(-35, -15)
+    gen_floats_exp_rand(rng, A, size_a, -35, -15);
+    gen_floats_exp_rand(rng, B, size_b, -35, -15);
+}
+void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size_a, int size_b) {
+    // At least one of A or B is (-100, -35)
+    // The other can be any of exp_rand(-15, 14), exp_rand(-35, -15) or exp_rand(-100, -35)
+    uint32_t choice = next_below(rng, 6);
+    bool coinflip = (choice & 1) != 0;
+    int other_type = choice >> 1;
+    assert(0 <= other_type && other_type < 3);
+
+    float *chosen = coinflip ? A : B;
+    int chosen_size = coinflip ? size_a : size_b;
+    gen_floats_exp_rand(rng, chosen, chosen_size, -100, -35);
+
+    float *other = coinflip ? B : A;
+    int other_size = coinflip ? size_b : size_a;
+    int min_exp, max_exp;
+    if (other_type == 0) {
+        min_exp = -15; max_exp = 14;
+    } else if (other_type == 1) {
+        min_exp = -35; max_exp = -15;
+    } else {
+        assert(other_type == 2);
+        min_exp = -100; max_exp = -35;
+    }
+    gen_floats_exp_rand(rng, other, other_size, min_exp, max_exp);
 }
