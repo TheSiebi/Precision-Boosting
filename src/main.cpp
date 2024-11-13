@@ -6,6 +6,7 @@
 #include "math.h"
 #include "split.h"
 #include "merge_accumulate.h"
+#include "rand.h"
 
 #include <iostream>
 #include <iomanip>
@@ -28,9 +29,39 @@ matmul_variant<float> matmulVariants32[] =
         .countFlops = matmul_flopcount_32,
     },
     {
+        .function = matmul_simpleMarkidis_v2,
+        .name = "Simple Markidis v2",
+        .description = "Simple markidis with multiple warps per block",
+        .countFlops = matmul_flopcount_32,
+    },
+    {
+        .function = matmul_simpleMarkidis_v3,
+        .name = "Simple Markidis v3",
+        .description = "Simple markidis with shared memory",
+        .countFlops = matmul_flopcount_32,
+    },
+    {
+        .function = matmul_simpleMarkidis_v4,
+        .name = "Simple Markidis v4",
+        .description = "Simple markidis with multiple fragments per warp",
+        .countFlops = matmul_flopcount_32,
+    },
+    {
         .function = matmul_simpleOotomo_v0,
         .name = "Simple Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
+    },
+    {
+        .function = matmul_Oootomo_v0,
+        .name = "Ootomo v0",
+        .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
+        .countFlops = matmul_flopcount_32
+    },
+    {
+        .function = matmul_Oootomo_v1,
+        .name = "Ootomo v1",
+        .description = "Ootomo algorithm as described by Code3 in the paper",
+        .countFlops = matmul_flopcount_32
     },
     {
         .function = matmul_cuBLAS32,
@@ -90,21 +121,6 @@ void referenceMatmul(T *A, T *B, T *C, int M, int K, int N)
     }
 }
 
-void randomFillf(float *M, int N)
-{
-    for (int j = 0; j < N; j++) {
-        M[j] =  (float) rand() / (float) RAND_MAX;
-    }
-}
-
-template<class T>
-void randomFill(T *M, int N)
-{
-    for (int j = 0; j < N; j++) {
-        M[j] = (T) (rand() / (double) RAND_MAX);
-    }
-}
-
 bool isEqual(const double *A, const double *B, int N)
 {
     double epsilon = 0.001;
@@ -143,9 +159,11 @@ void testSplitCorrectness(struct split_variant *function)
     float* Af_merged = (float *) malloc(M * N * sizeof(float));
     void *A16 = malloc(M * N * 2);
     void *dA16 = malloc(M * N * 2);
+
+    LCG rng = new_rng();
     
     // Populate matrices with random values between 0 and 1
-    randomFill(A, M*N);
+    gen_urand<double>(&rng, A, M*N);
     
     // f_inv(f(x)) ~= identity
     function->function(A, A16, dA16, M, N);
@@ -157,7 +175,7 @@ void testSplitCorrectness(struct split_variant *function)
     } 
 
     // Populate matrices with random values between 0 and 1
-    randomFillf(Af, M*N);
+    gen_urand<float>(&rng, Af, M*N);
     
     // f_inv(f(x)) ~= identity
     function->functionf(Af, A16, dA16, M, N);
@@ -195,9 +213,9 @@ void printMatrix(T *A, int M, int N)
 }
 
 template<class T>
-void testMatmulCorrectness_show_error(matmul_variant<T>* function)
+void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
 {
-    const T EPSILON = 0.002;
+    const T EPSILON = 1.e-4;
     const int FUNCTION_NAME_WIDTH = 26;
     const auto count_digits = [](int num)
     {
@@ -216,7 +234,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
 
     // Parameters
     // srand(time(NULL));
-    const size_t M = 48, K = 32, N = 16;
+    const size_t M = 1024, K = 512, N = 256;
     // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
 
     // Allocate matrices
@@ -226,10 +244,8 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
     T *C_ref = (T*) malloc(M * N * sizeof(T));
 
     // Populate A, B, C
-    for (size_t i = 0; i < M * K; ++i)
-        A[i] = rand() / (T) RAND_MAX;
-    for (size_t i = 0; i < K * N; ++i)
-        B[i] = rand() / (T) RAND_MAX;
+    gen_urand<T>(&rng, A, M * K);
+    gen_urand<T>(&rng, B, K * N);
 
     // Compute reference solution
     referenceMatmul(A, B, C_ref, M, K, N);
@@ -293,7 +309,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function)
 }
 
 template<class T>
-void testMatmulCorrectness(matmul_variant<T> *function) {
+void testMatmulCorrectness(matmul_variant<T> *function, LCG rng) {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
@@ -306,8 +322,8 @@ void testMatmulCorrectness(matmul_variant<T> *function) {
     T* C_ref = (T *) malloc(M * N * sizeof(T));
 
     // Populate matrices with random values between 0 and 1
-    randomFill(A, M*K);
-    randomFill(B, K*N);
+    gen_urand<T>(&rng, A, M*K);
+    gen_urand<T>(&rng, B, K*N);
 
     // Use matmul_v0 as a reference implementation
     referenceMatmul(A, B, C_ref, M, K, N);
@@ -355,24 +371,33 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
+        LCG rng = new_rng();
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
-        {
-            testMatmulCorrectness_show_error(&matmulVariants32[i]);
+        {   
+            testMatmulCorrectness_show_error(&matmulVariants32[i], rng);
             // testMatmulCorrectness(&matmulVariants32[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            testMatmulCorrectness_show_error(&matmulVariants64[i]);
+            testMatmulCorrectness_show_error(&matmulVariants64[i], rng);
             // testMatmulCorrectness(&matmulVariants64[i]);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
             testSplitCorrectness(&splitVariants[i]);
         }
+        
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
-        profile(matmulVariants32[0], 0, 1, 8192, 8192, 8192);
+
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
+
+        profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
     }
     else
     {

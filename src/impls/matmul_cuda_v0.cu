@@ -7,6 +7,7 @@
 
 #include "../matmul.h"
 #include "../profiler.h"
+#include "../cuda_utils.h"
 
 __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, int K, int N) 
 {
@@ -33,28 +34,29 @@ void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     size_t CSize = M * N * sizeof(double);
 
     double *deviceA, *deviceB, *deviceC;
-    cudaMalloc(&deviceA, ASize);
-    cudaMalloc(&deviceB, BSize);
-    cudaMalloc(&deviceC, CSize);
+    PRINT_ON_ERROR(cudaMalloc(&deviceA, ASize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceB, BSize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceC, CSize));
 
     PROFILE_SEGMENTS_SWITCH("memcpy host2device");
-    cudaMemcpy(deviceA, A, ASize, cudaMemcpyHostToDevice);
-    cudaMemcpy(deviceB, B, BSize, cudaMemcpyHostToDevice);
+    PRINT_ON_ERROR(cudaMemcpy(deviceA, A, ASize, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceB, B, BSize, cudaMemcpyHostToDevice));
 
     PROFILE_SEGMENTS_SWITCH("matmul");
     dim3 threadsPerBlock(16, 16);
     dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
     matmul_cuda_v0_kernel<<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
+    PRINT_ON_ERROR(cudaGetLastError());
 
-    cudaDeviceSynchronize();
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
-    cudaMemcpy(C, deviceC, CSize, cudaMemcpyDeviceToHost);
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceC, CSize, cudaMemcpyDeviceToHost));
 
     PROFILE_SEGMENTS_SWITCH("free");
-    cudaFree(deviceA);
-    cudaFree(deviceB);
-    cudaFree(deviceC);
+    PRINT_ON_ERROR(cudaFree(deviceA));
+    PRINT_ON_ERROR(cudaFree(deviceB));
+    PRINT_ON_ERROR(cudaFree(deviceC));
     PROFILE_SEGMENT_FUNCTION_END();
 }
 

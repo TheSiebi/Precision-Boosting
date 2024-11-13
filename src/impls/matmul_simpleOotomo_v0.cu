@@ -7,6 +7,7 @@
 #include <mma.h>
 
 #include "../split.h"
+#include "../cuda_utils.h"
 
 __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float *C, int M, int K, int N)
 {
@@ -46,30 +47,33 @@ void matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
     float* dev_A16B16;
     float* dev_dA16B16;
     float* dev_A16dB16;
-    cudaMalloc((void**)&dev_A16,     M * K * sizeof(half));
-    cudaMalloc((void**)&dev_dA16,    M * K * sizeof(half));
-    cudaMalloc((void**)&dev_B16,     K * N * sizeof(half));
-    cudaMalloc((void**)&dev_dB16,    K * N * sizeof(half));
-    cudaMalloc((void**)&dev_A16B16,  M * N * sizeof(float));
-    cudaMalloc((void**)&dev_dA16B16, M * N * sizeof(float));
-    cudaMalloc((void**)&dev_A16dB16, M * N * sizeof(float));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_A16,     M * K * sizeof(half)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_dA16,    M * K * sizeof(half)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_B16,     K * N * sizeof(half)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_dB16,    K * N * sizeof(half)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_A16B16,  M * N * sizeof(float)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_dA16B16, M * N * sizeof(float)));
+    PRINT_ON_ERROR(cudaMalloc((void**)&dev_A16dB16, M * N * sizeof(float)));
 
     // Copy from host to device
-    cudaMemcpy(dev_A16,     A16,     M * K * sizeof(half), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_dA16,    dA16,    M * K * sizeof(half), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_B16,     B16,     K * N * sizeof(half), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_dB16,    dB16,    K * N * sizeof(half), cudaMemcpyHostToDevice);
+    PRINT_ON_ERROR(cudaMemcpy(dev_A16,     A16,     M * K * sizeof(half), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(dev_dA16,    dA16,    M * K * sizeof(half), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(dev_B16,     B16,     K * N * sizeof(half), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(dev_dB16,    dB16,    K * N * sizeof(half), cudaMemcpyHostToDevice));
 
     // Multiply matrices
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_B16, dev_A16B16, M, K, N);
+    PRINT_ON_ERROR(cudaGetLastError());
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
+    PRINT_ON_ERROR(cudaGetLastError());
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
+    PRINT_ON_ERROR(cudaGetLastError());
 
     // Copy from device to host
-    cudaDeviceSynchronize();
-    cudaMemcpy(A16B16, dev_A16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(dA16B16, dev_dA16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(A16dB16, dev_A16dB16, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    PRINT_ON_ERROR(cudaMemcpy(A16B16, dev_A16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost));
+    PRINT_ON_ERROR(cudaMemcpy(dA16B16, dev_dA16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost));
+    PRINT_ON_ERROR(cudaMemcpy(A16dB16, dev_A16dB16, M * N * sizeof(float), cudaMemcpyDeviceToHost));
 
     // Accumulate (host)
     for (int i = 0; i < M * N; ++i)
@@ -81,13 +85,13 @@ void matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
     }
 
     // Free device memory
-    cudaFree((void**)&dev_A16);
-    cudaFree((void**)&dev_dA16);
-    cudaFree((void**)&dev_B16);
-    cudaFree((void**)&dev_dB16);
-    cudaFree((void**)&dev_A16B16);
-    cudaFree((void**)&dev_dA16B16);
-    cudaFree((void**)&dev_A16dB16);
+    PRINT_ON_ERROR(cudaFree(dev_A16));
+    PRINT_ON_ERROR(cudaFree(dev_dA16));
+    PRINT_ON_ERROR(cudaFree(dev_B16));
+    PRINT_ON_ERROR(cudaFree(dev_dB16));
+    PRINT_ON_ERROR(cudaFree(dev_A16B16));
+    PRINT_ON_ERROR(cudaFree(dev_dA16B16));
+    PRINT_ON_ERROR(cudaFree(dev_A16dB16));
 
     // Free host memory
     free(A16);
