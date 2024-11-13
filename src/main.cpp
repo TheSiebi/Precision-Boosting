@@ -84,7 +84,13 @@ matmul_variant<double> matmulVariants64[] =
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
         .countFlops = matmul_flopcount_64,
-    }
+    },
+    {
+        .function = matmul_Ozaki_v0,
+        .name = "matmul_Ozaki_v0 (slow)",
+        .description = "Ozaki FP64 using FP32 on CPU",
+        .countFlops = matmul_flopcount_64,
+    },
 };
 
 struct split_variant splitVariants[] =

@@ -8,6 +8,20 @@ int ix(int row, int col, int rows, int cols)
     return col + row * cols;
 }
 
+// Turns a rows x cols matrix into a cols x rows matrix
+template<class T>
+void transpose(const size_t rows, const size_t cols, T* data)
+{
+    T* backup = (T*) malloc(rows * cols * sizeof(T));
+    memcpy(backup, data, rows * cols * sizeof(T));
+
+    for (size_t i = 0; i < cols; ++i)
+        for (size_t j = 0; j < rows; ++j)
+            data[ix(i, j, cols, rows)] = backup[ix(j, i, rows, cols)];
+
+    free(backup);
+}
+
 template<class T>
 void matmul_triple_loop(const int m, const int k, const int n, const T* a, const T* b, T* c)
 {
@@ -25,7 +39,7 @@ void matmul_triple_loop(const int m, const int k, const int n, const T* a, const
 
 /**
  * Implementation of Algorithm 3 in Ozaki paper.
- * Returns a vector of matrices stored linearly as vectors.
+ * Returns an unevaluated sum as a vector of matrices stored as vectors.
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
@@ -106,6 +120,13 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
 }
 
+
+/**
+ * Implementation of Algorithm 4 in Ozaki paper.
+ * Returns an unevaluated sum as a vector of matrices stored as vectors.
+ * Uses fp32 (float) to emulate fp64 (double) precision.
+ * Completely disregards sparsity criterion.
+ */
 std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b)
 {
     // [m, n] = size(A); [n, p] = size(B);
@@ -136,14 +157,11 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
 }
 
+// WARNING: data in a, b, will be modified!
+// Ozaki paper uses A [m, n] and B [n, p] matrices
 void matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
-    double* a_copy = (double*) malloc(m * n * sizeof(double));
-    double* b_copy = (double*) malloc(n * p * sizeof(double));
-    memcpy(a_copy, a, m * n * sizeof(double));
-    memcpy(b_copy, b, n * p * sizeof(double));
-
-    const auto unevaluated_sum = ozaki_mul(m, n, p, a_copy, b_copy);
+    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
     for (const auto& matrix: unevaluated_sum)
     {
@@ -151,7 +169,4 @@ void matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
         for (int ij = 0; ij < m * p; ++ij)
             c[ij] += matrix[ij];
     }
-
-    free(a_copy);
-    free(b_copy);
 }
