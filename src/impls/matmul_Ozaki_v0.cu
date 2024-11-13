@@ -1,6 +1,4 @@
-#include <cuda_fp16.h>
-
-#include <cassert>
+#include <algorithm>
 #include <vector>
 
 int ix(int row, int col, int rows, int cols)
@@ -163,10 +161,23 @@ void matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
-    for (const auto& matrix: unevaluated_sum)
-    {
-        assert(matrix.size() == m * p);
-        for (int ij = 0; ij < m * p; ++ij)
+    for (int ij = 0; ij < m * p; ++ij)
+        for (const auto& matrix: unevaluated_sum)
             c[ij] += matrix[ij];
+}
+
+void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
+{
+    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
+    memset(c, 0, m * p * sizeof(double));
+    for (int ij = 0; ij < m * p; ++ij)
+    {
+        std::vector<float> summands(unevaluated_sum.size());
+        auto it = summands.begin();
+        for (const auto& matrix: unevaluated_sum)
+            *(it++) = matrix[ij];
+        std::sort(summands.begin(), summands.end());
+        for (const auto s: summands)
+            c[ij] += s;
     }
 }
