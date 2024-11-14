@@ -60,7 +60,7 @@ flop_counts matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     PRINT_ON_ERROR(cudaFree(deviceC));
     PROFILE_SEGMENT_FUNCTION_END();
 
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = {0L, 0L, 2L*M*K*N};
     return counts;
 }
 

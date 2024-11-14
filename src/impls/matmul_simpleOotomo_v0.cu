@@ -103,6 +103,6 @@ flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, i
     free(dA16B16);
     free(A16dB16);
 
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = {3L*M*K*N, 2L*M*K + 2L*K*N + 3L*M*K*N + 3L*M*N, 0L};
     return counts;
 }
