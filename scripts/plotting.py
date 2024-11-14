@@ -90,7 +90,7 @@ def generate_speedup_plot(data: dict, input_folder: str):
         runs = d['runs']
         avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
         sizes = [run['N'] for run in runs] # Assume square matrices only for now
-        gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+        gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
         all_performances.append(performances)
 
@@ -157,7 +157,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
         runs = d['runs']
         avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
         sizes = [run['N'] for run in runs]
-        gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+        gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
         label = d['meta']['function name']
         # Add compiler info if contained in data
@@ -197,7 +197,7 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
     # Compute performance for each run
     runs = data['runs']
     avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
-    gflops = [(run['flops16'] + run['flops32'] + run['flops64'])/1E9 for run in runs] # for now, disregard different flop types
+    gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
     performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
     sizes = [run['N'] for run in runs] # Only use square matrices for now
 

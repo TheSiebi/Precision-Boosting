@@ -14,7 +14,7 @@
 #define PROFILE_SEGMENT_FUNCTION_END()
 #define PROFILE_FUNCTION_END() 
 void profiler_reset();
-void profiler_segments_print();
+void profiler_segments_print(long flops16, long flops32, long flops64);
 
 #else //NPROFILER
 #include <stdio.h>
@@ -72,7 +72,7 @@ extern "C" {
 #endif
 
 void profiler_reset();
-void profiler_segments_print();
+void profiler_segments_print(long flops16, long flops32, long flops64);
 
 #ifdef __cplusplus
 }
