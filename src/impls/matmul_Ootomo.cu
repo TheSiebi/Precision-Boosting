@@ -55,7 +55,7 @@ constexpr struct matmulScales getArgScales(int minSize) {
     }
     else if (minSize == 256)
     {
-        return {8, 8, 2, 2, 2};
+        return {4, 4, 2, 2, 2};
     }
     // Warning: Before adding new configuration, make sure
     // that the shared memory of the GPU is large enough to handle the block dimensions

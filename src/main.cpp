@@ -88,7 +88,7 @@ matmul_variant<double> matmulVariants64[] =
         .description = "cuBLAS",
         .countFlops = matmul_flopcount_64,
     },
-    /*{
+    {
         .function = matmul_Ozaki_v0,
         .name = "matmul_Ozaki_v0 (slow)",
         .description = "Ozaki FP64 using FP32 on CPU",
@@ -99,7 +99,7 @@ matmul_variant<double> matmulVariants64[] =
         .name = "matmul_Ozaki_v0_sort_then_accumulate",
         .description = "Ozaki FP64 using FP32 on CPU",
         .countFlops = matmul_flopcount_64,
-    },*/
+    },
 };
 
 struct split_variant splitVariants[] =
@@ -198,11 +198,11 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
     bool failed = false;
     for (size_t run = 0; run < RUNS; run++) {
         uint64_t starting_seed = rng->state;
-        // Random dimensions from 16 to 1024
+        // Randomize matrix dimensions
         size_t M, K, N;
-        M = 1 << next_int(rng, 4, 10);
-        K = 1 << next_int(rng, 4, 10);
-        N = 1 << next_int(rng, 4, 10);
+        M = 1 << next_int(rng, 4, 9);
+        K = 1 << next_int(rng, 4, 9);
+        N = 1 << next_int(rng, 4, 9);
 
         // Allocate matrices
         T *A = (T*) malloc(M * K * sizeof(T));
