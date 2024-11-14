@@ -5,8 +5,9 @@
 #include "../matmul.h"
 #include "../profiler.h"
 #include "../cuda_utils.h"
+#include "../timer.h"
 
-void matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
+flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
 
@@ -15,7 +16,8 @@ void matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("CUBLAS initialization failed. %s: %s\n",
                 cublasGetStatusName(status), cublasGetStatusString(status));
-        return;
+        flop_counts counts = {0L, 0L, 0L};
+        return counts;
     }
 
     PROFILE_FUNCTION_SEGMENT_START("allocate");
@@ -55,9 +57,12 @@ void matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
     PRINT_ON_ERROR(cudaFree(d_C));
     cublasDestroy(handle);
     PROFILE_SEGMENT_FUNCTION_END();
+
+    flop_counts counts = {0L, 2L*M*K*N, 0L};
+    return counts;
 }
 
-void matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N) {
+flop_counts matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N) {
     const double alpha = 1.0f;
     const double beta = 0.0f;
 
@@ -66,7 +71,8 @@ void matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N)
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("CUBLAS initialization failed. %s: %s\n",
                 cublasGetStatusName(status), cublasGetStatusString(status));
-        return;
+        flop_counts counts = {0L, 0L, 0L};
+        return counts;
     }
 
     PROFILE_FUNCTION_SEGMENT_START("allocate");
@@ -106,4 +112,7 @@ void matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N)
     PRINT_ON_ERROR(cudaFree(d_C));
     cublasDestroy(handle);
     PROFILE_SEGMENT_FUNCTION_END();
+
+    flop_counts counts = {0L, 0L, 2L*M*K*N};
+    return counts;
 }

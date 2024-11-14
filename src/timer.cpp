@@ -34,6 +34,7 @@ cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
     cJSON_AddNumberToObject(json, "flops16", r->flops16);
     cJSON_AddNumberToObject(json, "flops32", r->flops32);
     cJSON_AddNumberToObject(json, "flops64", r->flops64);
+    cJSON_AddNumberToObject(json, "math_flops", r->math_flops);
 
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterationsPerConfig);
     cJSON_AddItemToObject(json, "timings", timings_array);
@@ -89,7 +90,7 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func)
+flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -98,6 +99,7 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> fun
     T* A = (T *) malloc(M * K * sizeof(T));
     T* B = (T *) malloc(K * N * sizeof(T));
     T* C = (T *) malloc(M * N * sizeof(T));
+    flop_counts counts;
 
     for(int i = 0; i < iterations; i++)
     {
@@ -111,7 +113,7 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> fun
 
         struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        func(A, B, C, M, K, N);
+        counts = func(A, B, C, M, K, N);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         sub_timespec(start, end, &delta);
         timings[i] = (double) delta.tv_sec*NS_PER_SECOND + delta.tv_nsec;
@@ -120,10 +122,12 @@ void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> fun
     free(A);
     free(B);
     free(C);
+
+    return counts;
 }
 
-template void timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func);
-template void timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func);
+template flop_counts timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func);
+template flop_counts timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func);
 
 template<class T>
 void timeFunction(matmul_variant<T> *function, char *path) {
@@ -146,8 +150,7 @@ void timeFunction(matmul_variant<T> *function, char *path) {
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
-        timeRun(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function);
-        flop_counts counts = function->countFlops(n, n, n);
+        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function);
         struct run run = {
             .M = n,
             .N = n,
@@ -155,6 +158,7 @@ void timeFunction(matmul_variant<T> *function, char *path) {
             .flops16 = counts.flops16,
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
+            .math_flops = 2L*n*n*n,
             .timings = &timings[i * iterationsPerConfig]
         };
         runs[i] = run;

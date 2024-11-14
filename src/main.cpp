@@ -23,31 +23,26 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_simpleMarkidis_v0,
         .name = "Simple Markidis v0",
         .description = "Simple markidis with simple cuda matmul",
-        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v1,
         .name = "Simple Markidis v1",
         .description = "Simple markidis with simple tensor matmul",
-        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v2,
         .name = "Simple Markidis v2",
         .description = "Simple markidis with multiple warps per block",
-        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v3,
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
-        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleMarkidis_v4,
         .name = "Simple Markidis v4",
         .description = "Simple markidis with multiple fragments per warp",
-        .countFlops = matmul_flopcount_32,
     },
     {
         .function = matmul_simpleOotomo_v0,
@@ -58,19 +53,16 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_Oootomo_v0,
         .name = "Ootomo v0",
         .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
-        .countFlops = matmul_flopcount_32
     },
     {
         .function = matmul_Oootomo_v1,
         .name = "Ootomo v1",
         .description = "Ootomo algorithm as described by Code3 in the paper",
-        .countFlops = matmul_flopcount_32
     },
     {
         .function = matmul_cuBLAS32,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
-        .countFlops = matmul_flopcount_32,
     }
 };
 
@@ -80,25 +72,21 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuda_v0,
         .name = "matmul_cuda_v0",
         .description = "straightforward triple for loop implementation running on the GPU",
-        .countFlops = matmul_flopcount_64,
     },
     {
         .function = matmul_cuBLAS64,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
-        .countFlops = matmul_flopcount_64,
     },
     {
         .function = matmul_Ozaki_v0,
         .name = "matmul_Ozaki_v0 (slow)",
         .description = "Ozaki FP64 using FP32 on CPU",
-        .countFlops = matmul_flopcount_64,
     },
     {
         .function = matmul_Ozaki_v0_sort_then_accumulate,
         .name = "matmul_Ozaki_v0_sort_then_accumulate",
         .description = "Ozaki FP64 using FP32 on CPU",
-        .countFlops = matmul_flopcount_64,
     },
 };
 
@@ -274,15 +262,16 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K
     T *A = (T*)calloc(M * K, sizeof(*A));
     T *B = (T*)calloc(K * N, sizeof(*B));
     T *C = (T*)calloc(M * N, sizeof(*C));
+    flop_counts counts;
 
     profiler_reset();
     for(int i = 0; i < warmup; i++)
         variant.function(A, B, C, M, K, N);
     profiler_reset();
     for(int i = 0; i < iterations; i++)
-        variant.function(A, B, C, M, K, N);
+        counts = variant.function(A, B, C, M, K, N);
     printf("\n----Profiling %s------\n", variant.name);
-    profiler_segments_print();
+    profiler_segments_print(counts.flops16, counts.flops32, counts.flops64);
 
     free(A);
     free(B);

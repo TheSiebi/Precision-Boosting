@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <vector>
+#include "../timer.h"
 
 int ix(int row, int col, int rows, int cols)
 {
@@ -157,16 +158,19 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
 // WARNING: data in a, b, will be modified!
 // Ozaki paper uses A [m, n] and B [n, p] matrices
-void matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
+flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
             c[ij] += matrix[ij];
+
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
+flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
 {
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
@@ -180,4 +184,7 @@ void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m
         for (const auto s: summands)
             c[ij] += s;
     }
+
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }

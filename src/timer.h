@@ -16,8 +16,7 @@ struct flop_counts
 };
 
 template<class T>
-using MatMul = void (*)(T *A, T *B, T *C, int M, int K, int N);
-using FlopCounts = flop_counts (*)(int M, int K, int N);
+using MatMul = flop_counts (*)(T *A, T *B, T *C, int M, int K, int N);
 
 template<class T>
 struct matmul_variant
@@ -25,7 +24,6 @@ struct matmul_variant
     MatMul<T> function;
     const char *name;
     const char *description;
-    FlopCounts countFlops;
 };
 
 typedef void (*Split)(const double *A, void *A16, void *dA16, int M, int N);
@@ -55,12 +53,16 @@ struct measurementConfiguration
 
 struct run
 {
+    // Matrix dimensions
     int M;
     int N;
     int K;
+    // Actually executed flops per precision (fp16 means on tensor core)
     long flops16;
     long flops32;
     long flops64;
+    // Theoretical, mathematical number of flops
+    long math_flops;
     double *timings;
 };
 
@@ -71,7 +73,7 @@ struct measurement
 };
 
 template<class T>
-void timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func);
+flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func);
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path);

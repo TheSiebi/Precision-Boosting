@@ -9,6 +9,7 @@
 #include "../cuda_utils.h"
 #include "../matmul.h"
 #include "../profiler.h"
+#include "../timer.h"
 
 /**
  * Note: Kernels in this file have been inspired by: 
@@ -592,12 +593,35 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
-void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
+/**
+ * flops16:
+ * 4*(2*M*K*N) (4 matmuls)
+ * 
+ * flops32:
+ * 2*M*K flops32 + 2*K*N flops32 (splitting A and B)
+ * + 5*N*M flops32 (merging with merge_cuda)
+ */
+flop_counts matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<0>(A, B, C, M, K, N);
+    flop_counts counts = {8L*M*K*N, 2L*M*K + 2L*K*N + 5L*N*M, 0L};
+    return counts;
 }
 
-void matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
+/**
+ * flops16:
+ * 3*(2*M*K*N) (3 matmuls)
+ * 
+ * flops32:
+ * 2*M*K + 2*K*N (splitting A and B)
+ * + N*M (accumulating outside tensor cores)
+ * + 2*N*M (merging into C)
+ * 
+ * NOTE: merging/accumulation flops32 should double-checked again
+ */
+flop_counts matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<1>(A, B, C, M, K, N);
+    flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
+    return counts;
 }
