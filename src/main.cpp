@@ -15,6 +15,8 @@
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
+const int FUNCTION_NAME_WIDTH = 38;
+
 matmul_variant<float> matmulVariants32[] =
 {
     {
@@ -155,7 +157,13 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
     } 
 
     if (!fail) {
-        printf("SUCCESS: %s passed correctness tests!\n", function->name);
+        // Success!
+        std::cout
+            << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
+            << function->name;
+        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
+            std::cout << " ";
+        std::cout << "Correct!      " << std::endl;
     }
 
     free(A);
@@ -184,76 +192,80 @@ void printMatrix(T *A, int M, int N)
 template<class T>
 void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 {
-    const int FUNCTION_NAME_WIDTH = 38;
-
     // Parameters
     // srand(time(NULL));
-    // const size_t runs = 100;
-    const size_t M = 1024, K = 512, N = 256;
-    // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
+    const size_t RUNS = 100;
+    bool failed = false;
+    for (size_t run = 0; run < RUNS; run++) {
+        uint64_t starting_seed = rng->state;
+        // Random dimensions from 16 to 1024
+        size_t M, K, N;
+        M = 1 << next_int(rng, 4, 10);
+        K = 1 << next_int(rng, 4, 10);
+        N = 1 << next_int(rng, 4, 10);
 
-    // Allocate matrices
-    T *A = (T*) malloc(M * K * sizeof(T));
-    T *B = (T*) malloc(K * N * sizeof(T));
-    T *C = (T*) calloc(M * N, sizeof(T)); // Ensures C is zero to avoid interference from previous runs.
+        // Allocate matrices
+        T *A = (T*) malloc(M * K * sizeof(T));
+        T *B = (T*) malloc(K * N * sizeof(T));
+        T *C = (T*) calloc(M * N,  sizeof(T)); // Ensures C is zero to avoid interference from previous runs.
 
-    // Populate A, B with values between -1 and 1
-    gen_urand<T>(rng, A, M * K);
-    gen_urand<T>(rng, B, K * N);
+        // Populate A, B with values between -1 and 1
+        gen_urand<T>(rng, A, M * K);
+        gen_urand<T>(rng, B, K * N);
 
-    // Call function under test
-    function->function(A, B, C, M, K, N);
+        // Call function under test
+        function->function(A, B, C, M, K, N);
 
-    // Analyze result
-    bool probabilistic = M * N > 1000000;
-    int wrong;
-    if (probabilistic) {
-        // Probabilistic test
-        wrong = test_matmul_correctness_probabilistic(rng, A, B, C, M, K, N);
-    } else {
-        // Full comparison
-        wrong = test_matmul_correctness_full(A, B, C, M, K, N);
+        // Analyze result
+        bool probabilistic = M * N > 1000000;
+        int wrong;
+        if (probabilistic) {
+            // Probabilistic test
+            wrong = test_matmul_correctness_probabilistic(rng, A, B, C, M, K, N);
+        } else {
+            // Full comparison
+            wrong = test_matmul_correctness_full(A, B, C, M, K, N);
+        }
+
+        if (wrong != -1) {
+            failed = true;
+            // Give a nice error message
+            double wrong_val = (double) C[wrong];
+            double ref_sol = referenceMatmul_element(A, B, K, N, wrong);
+            double abs_err = abs(ref_sol - wrong_val);
+            double rel_err = abs_err / abs(ref_sol);
+            size_t row = wrong / N;
+            size_t col = wrong % N;
+
+            std::cout
+                << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
+                << function->name;
+            for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
+                std::cout << " ";
+
+            std::cout << "\033[31m" << "INCORRECT" << "\033[0m" << std::endl; // Red text
+            std::cout << "\t" << "Seed: " << std::hex << starting_seed << std::dec << "\tM=" << M << " K=" << K << " N=" << N << std::endl;
+            std::cout << "\t\033[33m" << "Wrong at: Row " << row << ", Col " << col << "\033[0m" << std::endl;
+            std::cout << "\t" << "Expected: " << ref_sol << "\tActual:   " << wrong_val << std::endl;
+            std::cout << "\t\033[33m" << "Error:    " << rel_err << " (rel) " << abs_err << " (abs)" << "\033[0m" << std::endl;
+            break;
+        }
+
+        // Free memory
+        free(A);
+        free(B);
+        free(C);
     }
 
-    if (wrong == -1) {
+    if (!failed) {
         // Success!
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
             << function->name;
         for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
             std::cout << " ";
-        
-        if (probabilistic) {
-            std::cout << "Probably ";
-        }
-        std::cout << "correct!      ";
-    } else {
-        // Give a nice error message
-        double wrong_val = (double) C[wrong];
-        double ref_sol = referenceMatmul_element(A, B, K, N, wrong);
-        double abs_err = abs(ref_sol - wrong_val);
-        double rel_err = abs_err / abs(ref_sol);
-        size_t row = wrong / N;
-        size_t col = wrong % N;
-
-        std::cout
-            << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
-            << function->name;
-        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
-            std::cout << " ";
-
-        std::cout << "\033[31m" << "INCORRECT" << "\033[0m" << std::endl; // Red text
-        std::cout << "\t\033[33m" << "Wrong at: Row " << row << ", Col " << col << "\033[0m" << std::endl;
-        std::cout << "\t" << "Expected: " << ref_sol << std::endl;
-        std::cout << "\t" << "Actual:   " << wrong_val << std::endl;
-        std::cout << "\t\033[33m" << "Error:    " << rel_err << " (rel) " << abs_err << " (abs)" << "\033[0m" << std::endl;
+        std::cout << "Correct!      " << std::endl;
     }
-    std::cout << std::endl;
-
-    // Free memory
-    free(A);
-    free(B);
-    free(C);
 }
 
 template<class T>
