@@ -20,11 +20,11 @@ __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float
     const int row = tid / N;
     const int col = tid % N;
     C[index(row, col, M, N)] = 0.f;
-    // TOTAL: 2*K flops16
-    // SHOULD BE flops16 to emulate tensor cores, will be changed in main
+    // TOTAL: K flops16 + K flops32
+    // NOTE: should contain flops16 to emulate tensor cores, will be changed in main
     for (int l = 0; l < K; ++l)
         // C[index(row, col, M, N)] += (float)(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
-        // 2 flops16 (see note above why 16)
+        // 1 flop16 + 1flop32 (see note above why 16)
         C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)]) * __half2float(B[index(l, col, K, N)]);
 }
 
@@ -68,13 +68,13 @@ flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, i
     PRINT_ON_ERROR(cudaMemcpy(dev_dB16,    dB16,    K * N * sizeof(half), cudaMemcpyHostToDevice));
 
     // Multiply matrices
-    // 2*M*K*N flops16
+    // M*K*N flops16 + M*K*N flops32
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_B16, dev_A16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    // 2*M*K*N flops16
+    // M*K*N flops16 + M*K*N flops32
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    // 2*M*K*N flops16
+    // M*K*N flops16 + M*K*N flops32
     basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
 
@@ -116,14 +116,15 @@ flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, i
     /* 
     TOTAL FLOP COUNTS:
     flops16:
+    3*(M*K*N)
 
     flops32:
     2*M*K
     + 2*K*N
+    + 3*(M*K*N)
     + M*N*3
      
-    flops64:
-    3*(2*M*K*N)
+    flops64: 0
     */
     flop_counts counts = {0L, 0L, 0L};
     return counts;
