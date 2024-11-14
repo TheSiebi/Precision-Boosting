@@ -84,7 +84,19 @@ matmul_variant<double> matmulVariants64[] =
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
         .countFlops = matmul_flopcount_64,
-    }
+    },
+    {
+        .function = matmul_Ozaki_v0,
+        .name = "matmul_Ozaki_v0 (slow)",
+        .description = "Ozaki FP64 using FP32 on CPU",
+        .countFlops = matmul_flopcount_64,
+    },
+    {
+        .function = matmul_Ozaki_v0_sort_then_accumulate,
+        .name = "matmul_Ozaki_v0_sort_then_accumulate",
+        .description = "Ozaki FP64 using FP32 on CPU",
+        .countFlops = matmul_flopcount_64,
+    },
 };
 
 struct split_variant splitVariants[] =
@@ -216,7 +228,7 @@ template<class T>
 void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
 {
     const T EPSILON = 1.e-4;
-    const int FUNCTION_NAME_WIDTH = 26;
+    const int FUNCTION_NAME_WIDTH = 38;
     const auto count_digits = [](int num)
     {
         if (num < 0)

@@ -23,4 +23,9 @@ void matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N);
 void matmul_cuBLAS32(float *A, float *B, float *C, int M, int K, int N);
 void matmul_cuBLAS64(double *A, double *B, double *C, int M, int K, int N);
 
+// WARNING: data in a, b, will be modified!
+// Ozaki paper uses A [m, n] and B [n, p] matrices
+void matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p);
+void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p);
+
 #endif // MATMUL_H
