@@ -170,7 +170,7 @@ flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p
     return counts;
 }
 
-void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
+flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
 {
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
@@ -184,4 +184,7 @@ void matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m
         for (const auto s: summands)
             c[ij] += s;
     }
+
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
