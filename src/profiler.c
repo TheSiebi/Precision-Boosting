@@ -76,9 +76,9 @@ void profiler_segments_print(long flops16, long flops32, long flops64)
     double overallTime = (double)profile_segment_sentinel.childTime / FREQUENCY;
     
     if (flops16 > 0 || flops32 > 0 || flops64 > 0) {
-        if (flops16 > 0) printf("FP16: %.2f Gflops/s ", (double)flops16 / overallTime / 1e9);
-        if (flops32 > 0) printf("FP32: %.2f Gflops/s ", (double)flops32 / overallTime / 1e9);
-        if (flops64 > 0) printf("FP64: %.2f Gflops/s ", (double)flops64 / overallTime / 1e9);
+        if (flops16 > 0) printf("FP16: %.2f Gflop/s ", (double)flops16 / overallTime / 1e9);
+        if (flops32 > 0) printf("FP32: %.2f Gflop/s ", (double)flops32 / overallTime / 1e9);
+        if (flops64 > 0) printf("FP64: %.2f Gflop/s ", (double)flops64 / overallTime / 1e9);
         printf("\n");
     }
 
