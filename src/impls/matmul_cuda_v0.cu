@@ -15,8 +15,10 @@ __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, in
     int m = blockIdx.x * blockDim.x + threadIdx.x;
     int n = blockIdx.y * blockDim.y + threadIdx.y;
     double result = 0.0;
+    // TOTAL: 2*K flops
     for (int k = 0; k < K; k++) 
     {
+        // 2 flops
         result += A[m*K + k] * B[k*N + n];
     }
     C[m*N + n] = result;
@@ -46,6 +48,7 @@ flop_counts matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     PROFILE_SEGMENTS_SWITCH("matmul");
     dim3 threadsPerBlock(16, 16);
     dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
+    // TOTAL: kernel_flops*M*N = 2*K*M*N, all double precision
     matmul_cuda_v0_kernel<<<blocks, threadsPerBlock>>>(deviceA, deviceB, deviceC, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
 
