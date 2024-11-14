@@ -100,21 +100,25 @@ constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
 /**
  * Simple kernel that splits a float matrix into two half matrices according to the Ootoma paper
  */
+// TOTAL: 2 flops32
 __global__ void split_cuda(float *A, half *A0, half *A1)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     float value = A[i];
     half mainPart = (half)value;
     A0[i] = mainPart;
+    // 2 flops32
     A1[i] = (half)((value - (float)mainPart) * 2048.0f);
 }
 
 /**
  * Simple kernel that performs the merge described in the Ootomo paper including the smallest term. 
  */
+// TOTAL: 5 flops32
 __global__ void merge_cuda(float *C, float *AB, float *dAB, float *AdB, float *dAdB)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+    // 5 flops32
     C[i] = AB[i] + (dAB[i] + AdB[i]) / 2048.0f + dAdB[i] / 4194304.0f;
 }
 
@@ -123,6 +127,7 @@ __global__ void merge_cuda(float *C, float *AB, float *dAB, float *AdB, float *d
  * specific Ootomo logic. In particular, it does NOT do the accumulation of values outside the tensor 
  * cores to avoid RZ.
  */
+// TOTAL: 2*M*K*N flops16
 template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
           const int N_WARP_ROWS_PER_BLOCK,
           const int N_WARP_COLS_PER_BLOCK,
@@ -254,6 +259,7 @@ struct split
 /**
  * Perform vectorized split of a float4 into 8 halfs according to the Ootomo paper
  */
+// TOTAL: 8 flops32
 __device__ __forceinline__ struct split split_Ootomo(float4 value)
 {
     float2 first = make_float2(value.x, value.y);
@@ -264,9 +270,11 @@ __device__ __forceinline__ struct split split_Ootomo(float4 value)
     split.y = __float22half2_rn(second);
 
     float2 reconstructed = __half22float2(split.x);
+    // 4 flops32
     split.dx = __float22half2_rn(make_float2((first.x - reconstructed.x) * 2048, (first.y - reconstructed.y) * 2048));
 
     reconstructed = __half22float2(split.y);
+    // 4 flops32
     split.dy = __float22half2_rn(make_float2((second.x - reconstructed.x) * 2048, (second.y - reconstructed.y) * 2048));
 
     return split;
@@ -293,9 +301,10 @@ __device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int in
     // assert(fabs(((float)tmp_split.x.x + (float)tmp_split.dx.x / 2048.0f) - tmp.x) < 0.001f);
     // assert(fabs(((float)tmp_split.x.y + (float)tmp_split.dx.y / 2048.0f) - tmp.y) < 0.001f);
     // assert(fabs(((float)tmp_split.y.x + (float)tmp_split.dy.x / 2048.0f) - tmp.z) < 0.001f);
-    // assert(fabs(((float)tmp_split.y.y + (float)tmp_split.dy.y / 2048.0f) - tmp.w) < 0.001f);  
+    // assert(fabs(((float)tmp_split.y.y + (float)tmp_split.dy.y / 2048.0f) - tmp.w) < 0.001f);
 }
 
+// TOTAL: 3*(2*M*K*N) flops16 + 2*N*M flops32 + 2*M*K flops32 + 2*K*N flops32
 template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
           const int N_WARP_ROWS_PER_BLOCK,
           const int N_WARP_COLS_PER_BLOCK,

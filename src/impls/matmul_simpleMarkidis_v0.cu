@@ -255,6 +255,7 @@ __global__ void matmul_v4(half *A, half *B, float *C, int M, int K, int N)
             wmma::store_matrix_sync(C + offsetC + (m * FragSizeM * N + n * FragSizeN) , cFrag[m][n], N, wmma::mem_row_major);
 }
 
+// 1 flop32
 __global__ void split_cuda(float *A, half *A0, half *A1, int N)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
@@ -399,6 +400,7 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
 
     PROFILE_SEGMENTS_SWITCH("merge");
 
+    // 3*M*N flops32
     for(int i = 0; i < M * N; i++)
         C[i] = hostC[0][i] + hostC[1][i] + hostC[2][i] + hostC[3][i];
 
@@ -417,6 +419,7 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
+// TOTAL: only 1 flop32 per element when splitting and merging, rest same! except four matmuls not three
 flop_counts matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<0>(A, B, C, M, K, N);
