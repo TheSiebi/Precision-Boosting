@@ -9,6 +9,7 @@
 #include "../cuda_utils.h"
 #include "../matmul.h"
 #include "../profiler.h"
+#include "../timer.h"
 
 /**
  * Note: Kernels in this file have been inspired by: 
@@ -592,12 +593,16 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
-void matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<0>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<1>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }

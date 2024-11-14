@@ -8,6 +8,7 @@
 
 #include "../split.h"
 #include "../cuda_utils.h"
+#include "../timer.h"
 
 __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float *C, int M, int K, int N)
 {
@@ -24,7 +25,7 @@ __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float
         C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)]) * __half2float(B[index(l, col, K, N)]);
 }
 
-void matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     // Allocate host memory
     half* A16      = (half*) malloc(M * K * sizeof(half));
@@ -101,4 +102,7 @@ void matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
     free(A16B16);
     free(dA16B16);
     free(A16dB16);
+
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }

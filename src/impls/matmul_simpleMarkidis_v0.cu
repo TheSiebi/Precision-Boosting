@@ -10,6 +10,7 @@
 #include "../matmul.h"
 #include "../profiler.h"
 
+#include "../timer.h"
 __global__ void matmul_v0(half *A, half *B, float *C, int M, int K, int N) 
 {
     int m = blockIdx.x * blockDim.x + threadIdx.x;
@@ -416,28 +417,38 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
-void matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<0>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<1>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_simpleMarkidis_v2(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleMarkidis_v2(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<2>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_simpleMarkidis_v3(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleMarkidis_v3(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<3>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
-void matmul_simpleMarkidis_v4(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_simpleMarkidis_v4(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_simpleMarkidis<4>(A, B, C, M, K, N);
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 

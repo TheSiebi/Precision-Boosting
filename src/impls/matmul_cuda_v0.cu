@@ -8,6 +8,7 @@
 #include "../matmul.h"
 #include "../profiler.h"
 #include "../cuda_utils.h"
+#include "../timer.h"
 
 __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, int K, int N) 
 {
@@ -22,7 +23,7 @@ __global__ void matmul_cuda_v0_kernel(double *A, double *B, double *C, int M, in
 }
 
 
-void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N) 
+flop_counts matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N) 
 {
     assert((M & 0xF) == 0);
     assert((K & 0xF) == 0);
@@ -58,5 +59,8 @@ void matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N)
     PRINT_ON_ERROR(cudaFree(deviceB));
     PRINT_ON_ERROR(cudaFree(deviceC));
     PROFILE_SEGMENT_FUNCTION_END();
+
+    flop_counts counts = {0L, 0L, 0L};
+    return counts;
 }
 
