@@ -21,6 +21,7 @@ void transpose(const size_t rows, const size_t cols, T* data)
     free(backup);
 }
 
+// TOTAL: 2*M*K*N flops<T>
 template<class T>
 void matmul_triple_loop(const int m, const int k, const int n, const T* a, const T* b, T* c)
 {
@@ -42,6 +43,17 @@ void matmul_triple_loop(const int m, const int k, const int n, const T* a, const
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
+/**
+ * TOTAL:
+ * flops16: 0
+ * 
+ * flops32:
+ * 4
+ * + (4*m + 3*m*n) * WHILE_ITERATIONS (add counter in main)
+ * 
+ * flops64:
+ * (2*m*n + m) * WHILE_ITERATIONS (add counter in main)
+ */
 std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a, const int l)
 {
     // q = size(A, 2);
@@ -54,6 +66,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
     // beta = fl(...)
     const float log2u = -24.f;
+    // 4 flops32
     const float beta = ceilf((-log2u + log2(q)) / 2.f);
 
     // D{1} = zeros(size(A));
@@ -64,14 +77,18 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
     {
         // mu = max(abs(A), [], 2);
         std::vector<double> mu(m, 0.0);
+        // TOTAL: 2*m*n flops64
         for (int i = 0; i < m; ++i)
             for (int j = 0; j < q; ++j)
+                // 2 flops64
                 mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
         double max = 0.0;
+        // TOTAL: m flops64
         for (const auto mui: mu)
             max = fmax(max, mui);
+
         if (max == 0.0)
         {
             // printf("Early termination\n");
@@ -80,7 +97,9 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
         // w = fl(...);
         std::vector<double> w(m);
+        // TOTAL: 4*m flops32
         for (int i = 0; i < m; ++i)
+            // 4 flops32
             w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
@@ -92,9 +111,12 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
         // D{k} = fl((A + S) - S);
         // A = fl(A - D{k});
         D.resize(k, std::vector<float>(m * n));
+        // 3*m*n flops32
         for (int ij = 0; ij < m * n; ++ij)
         {
+            // 2 flops32
             D[k - 1][ij] = ((float) a[ij] + (float) S[ij]) - (float) S[ij]; // Compile with -O0!
+            // 1 flop32
             a[ij] = (double) ((float) a[ij] - D[k - 1][ij]);
         }
 
@@ -126,18 +148,37 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
+/**
+ * TOTAL:
+ * flops32:
+ * 4 * + (4*m + 3*m*n) * WHILE_ITERATIONS
+ * + 4 * + (4*n + 3*n*p)
+ * + 2*nA*nB*m*n*p
+ * 
+ * flops64:
+ * (2*m*n + m) * WHILE_ITERATIONS
+ * + (2*n*p + n) * WHILE_ITERATIONS
+ */
 std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b)
 {
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
 
     // D = Split_Mat(A, inf, delta); nA = length(D);
+    /*
+     * 4 * + (4*m + 3*m*n) * WHILE_ITERATIONS flops32
+     * (2*m*n + m) * WHILE_ITERATIONS flops64
+     */
     const auto D = ozaki_split(m, n, a, INT_MAX);
     const auto nA = D.size();
 
     // E = Split_Mat(BT, inf, delta); nB = length(E);
     // Do we really need to transpose B?
     // transpose(n, p, b);
+    /*
+     * 4 * + (4*n + 3*n*p) * WHILE_ITERATIONS flops32
+     * (2*n*p + n) * WHILE_ITERATIONS flops64
+     */
     const auto E = ozaki_split(n, p, b, INT_MAX); // remove const qualifier if you do wish to transpose
     const auto nB = E.size();
 
@@ -148,8 +189,11 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
     int t = 0;
     std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
+
+    // TOTAL: 2*nA*nB*m*n*p flops32
     for (int r = 0; r < nA; ++r)
         for (int s = 0; s < nB; ++s)
+            // 2*m*n*p flops32
             matmul_triple_loop<float>(m, n, p, D[r].data(), E[s].data(), C[t++].data());
 
     return C;
@@ -160,10 +204,13 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
+    // See above for count
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
     memset(c, 0, m * p * sizeof(double));
+    // TOTAL: m*p*len(unevaluated_sum)*m*p flops32
     for (int ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
+            // m*p flops32
             c[ij] += matrix[ij];
 
     flop_counts counts = {0L, 0L, 0L};
