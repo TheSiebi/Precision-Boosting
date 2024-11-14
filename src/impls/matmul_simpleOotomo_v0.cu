@@ -21,11 +21,9 @@ __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float
     const int col = tid % N;
     C[index(row, col, M, N)] = 0.f;
     // TOTAL: K flops16 + K flops32
-    // NOTE: should contain flops16 to emulate tensor cores, will be changed in main
     for (int l = 0; l < K; ++l)
         // C[index(row, col, M, N)] += (float)(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
-        // 1 flop16 + 1flop32 (see note above why 16)
-        C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)]) * __half2float(B[index(l, col, K, N)]);
+        C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
 }
 
 flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
@@ -126,6 +124,6 @@ flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, i
      
     flops64: 0
     */
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = {3L*M*K*N, 2L*M*K + 2L*K*N + 3L*M*K*N + 3L*M*N, 0L};
     return counts;
 }
