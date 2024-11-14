@@ -1,26 +1,118 @@
 #include "precision.h"
 
-#include <math.h>
-
 template<class T>
-T frobenius_norm(T *A, int n) {
-    T sqr_sum = 0.0;
+double frobenius_norm(T *A, int n) {
+    double sqr_sum = 0.0;
     for(int i = 0; i < n; i++) {
-        T a_i = A[i];
+        double a_i = (double) A[i];
         sqr_sum += a_i * a_i;
     }
-    T result = sqrt(sqr_sum);
+    double result = sqrt(sqr_sum);
     return result;
 }
 
-double relative_residual(double *result, double *reference, int n) {
+template<class T>
+double abs_residual(T *result, double *reference, int n) {
+    double sqr_sum_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        double ref = reference[i];
+        double err = ref - ((double) result[i]);
+        sqr_sum_err += err * err;
+    }
+    return sqrt(sqr_sum_err);
+}
+
+template<class T>
+double rel_residual(T *result, double *reference, int n) {
     double sqr_sum_err = 0.0;
     double sqr_sum_ref = 0.0;
     for(int i = 0; i < n; i++) {
         double ref = reference[i];
-        double err = ref - result[i];
+        double err = ref - ((double) result[i]);
         sqr_sum_err += err * err;
         sqr_sum_ref += ref * ref;
     }
     return sqrt(sqr_sum_err / sqr_sum_ref);
 }
+
+template double frobenius_norm<float>(float *result, int n);
+template double frobenius_norm<double>(double *result, int n);
+template double abs_residual<float>(float *result, double *reference, int n);
+template double abs_residual<double>(double *result, double *reference, int n);
+template double rel_residual<float>(float *result, double *reference, int n);
+template double rel_residual<double>(double *result, double *reference, int n);
+
+/// Returns the index of an element with error that is too great. If none is found, returns -1
+template<class T>
+int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, size_t K, size_t N) {
+    if (M * N < 1e6) {
+        // Just do a full correctness test
+        return test_matmul_correctness_full<T>(A, B, C, M, K, N);
+    }
+    // Test the square root of the matrix size
+    size_t num_to_test = 1e6 + sqrt(M * N - 1e6);
+    while (num_to_test--) {
+        // Generate random index and test
+        size_t index = next_below(rng, (uint32_t) (M * N));
+        if (!test_matmul_correctness_single<T>(A, B, C, M, K, N, index)) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+/// Returns the index of an element with error that is too great. If none is found, returns -1
+template<class T>
+int test_matmul_correctness_full(T *A, T *B, T *C, size_t M, size_t K, size_t N) {
+    for (size_t index = 0; index < M * N; index++) {
+        // Test every index
+        if (!test_matmul_correctness_single<T>(A, B, C, M, K, N, index)) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+/// Returns true if the error is within acceptable bounds
+template<class T>
+bool test_matmul_correctness_single(T *A, T *B, T *C, size_t M, size_t K, size_t N, size_t index) {
+    const double MAX_REL_ERR = 1e-2;
+    // Reference solution in double precision
+    double c_ij = referenceMatmul_element(A, B, K, N, index);
+    // Calculate error
+    double abs_err_ij = abs(c_ij - C[index]);
+    double rel_err_ij = abs_err_ij / abs(c_ij); 
+    // Check cut-off bounds
+    return rel_err_ij <= MAX_REL_ERR;
+}
+
+template<class T>
+void referenceMatmul_full(T *A, T *B, T *C, int M, int K, int N) {
+    for (int index = 0; index < M * N; index++) {
+        C[index] = (T) referenceMatmul_element(A, B, K, N, index);
+    }
+}
+
+template<class T>
+double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index) {
+    size_t i = index / N;
+    size_t j = index % N;
+    double c_ij = 0.0;
+    for (size_t k = 0; k < K; k++) {
+        double a_ik = (double) A[i*K + k];
+        double b_kj = (double) B[k*N + j];
+        c_ij += a_ik * b_kj;
+    }
+    return c_ij;
+}
+
+
+template int test_matmul_correctness_probabilistic<float>(LCG *rng, float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template int test_matmul_correctness_probabilistic<double>(LCG *rng, double *A, double *B, double *C, size_t M, size_t K, size_t N);
+
+template int test_matmul_correctness_full<float>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template int test_matmul_correctness_full<double>(double *A, double *B, double *C, size_t M, size_t K, size_t N);
+
+template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
+template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);

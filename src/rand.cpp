@@ -8,6 +8,11 @@ uint32_t float_to_bits(float f) {
     uint32_t *bits_ptr = (uint32_t*) (&f);
     return *bits_ptr;
 }
+int8_t float_exponent(float f) {
+    uint32_t bits = float_to_bits(f);
+    int8_t exp = ((bits >> 23) & 0xff) - 127;
+    return exp;
+}
 float construct_float(bool sign, int exponent, uint32_t mantissa) {
     // Float: 1 sign | 8 exp | 23 mantissa
     assert(-127 <= exponent && exponent <= 128);
@@ -25,6 +30,11 @@ double bits_to_double(uint64_t bits) {
 uint64_t double_to_bits(double d) {
     uint64_t *bits_ptr = (uint64_t*) (&d);
     return *bits_ptr;
+}
+int16_t double_exponent(double d) {
+    uint64_t bits = double_to_bits(d);
+    int16_t exp = ((bits >> 52) & 0x7ff) - 1023;
+    return exp;
 }
 double construct_double(bool sign, int exponent, uint64_t mantissa) {
     // Double: 1 sign | 11 exp | 52 mantissa
@@ -97,7 +107,7 @@ float next_signed_float(struct LCG *rng) {
 }
 float next_signed_float_range(struct LCG *rng, int8_t min_exp, int8_t max_exp) {
     // It's fine for min_exp to be small (we can generate sub-normal values)
-    // But max_exp above 1023 will generate non-uniform values
+    // But max_exp above 127 will generate non-uniform values
     assert(min_exp <= max_exp && max_exp <= 127);
     // Geometrically distributed exponent -> uniformly distributed values
     int exponent = next_exponent_geometric(rng, min_exp, max_exp);
@@ -121,7 +131,7 @@ float next_float_with_exp(struct LCG *rng, int exponent) {
 
     float result = construct_float(sign, exponent, mantissa);
     // Sanity check
-    assert(isnormal(result));
+    assert(isfinite(result));
     return result;
 }
 
@@ -159,7 +169,7 @@ double next_double_with_exp(struct LCG *rng, int exponent) {
 
     double result = construct_double(sign, exponent, mantissa);
     // Sanity check
-    assert(isnormal(result));
+    assert(isfinite(result));
     return result;
 }
 
@@ -207,13 +217,13 @@ void gen_doubles_urand(struct LCG *rng, double *ds, int size) {
 }
 
 void gen_floats_exp_rand(struct LCG *rng, float *fs, int size, int min_exp, int max_exp) {
-    assert(-128 <= min_exp && 127 <= max_exp);
+    assert(-128 <= min_exp && max_exp <= 127);
     for (int i = 0; i < size; i++) {
         fs[i] = next_float_exp_rand(rng, (int8_t) min_exp, (int8_t) max_exp);
     }
 }
 void gen_doubles_exp_rand(struct LCG *rng, double *ds, int size, int min_exp, int max_exp) {
-    assert(-1024 <= min_exp && 1023 <= max_exp);
+    assert(-1024 <= min_exp && max_exp <= 1023);
     for (int i = 0; i < size; i++) {
         ds[i] = next_double_exp_rand(rng, (int16_t) min_exp, (int16_t) max_exp);
     }

@@ -99,7 +99,7 @@ void gen_doubles_exp_rand(struct LCG *rng, double *ds, int size, int min_exp, in
  * @param  max_exp the maximum exponent to generate (inclusive)
  */
 template<class T>
-void gen_urand(struct LCG *rng, T *ts, int size, int min_exp, int max_exp)
+void gen_exp_rand(struct LCG *rng, T *ts, int size, int min_exp, int max_exp)
 {
     if (std::is_same<T, float>::value) {
         return gen_floats_exp_rand(rng, (float*) ts, size, min_exp, max_exp);
@@ -110,9 +110,9 @@ void gen_urand(struct LCG *rng, T *ts, int size, int min_exp, int max_exp)
     }
 }
 
-void fill_matrices_ootomo_type1(struct LCG *rng, float *A, float *B, int size);
-void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size);
-void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size);
-void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size);
+void fill_matrices_ootomo_type1(struct LCG *rng, float *A, float *B, int size_a, int size_b);
+void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size_a, int size_b);
+void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size_a, int size_b);
+void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size_a, int size_b);
 
 #endif // RAND_H

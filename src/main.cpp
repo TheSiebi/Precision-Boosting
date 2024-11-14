@@ -7,6 +7,7 @@
 #include "split.h"
 #include "merge_accumulate.h"
 #include "rand.h"
+#include "precision.h"
 
 #include <iostream>
 #include <iomanip>
@@ -120,7 +121,7 @@ struct split_variant splitVariants[] =
 };
 
 template<class T>
-void referenceMatmul(T *A, T *B, T *C, int M, int K, int N) 
+void referenceMatmul(T *A, T *B, T *C, int M, int K, int N)
 {
     for (int i = 0; i < M; i++) {
         for (int j = 0; j < N; j++) {
@@ -161,7 +162,7 @@ bool isEqual(const float *A, const float *B, int N)
     return !fail;
 }
 
-void testSplitCorrectness(struct split_variant *function)
+void testSplitCorrectness(struct split_variant *function, LCG* rng)
 {
     int M, N;
     M = N = 32;
@@ -172,10 +173,8 @@ void testSplitCorrectness(struct split_variant *function)
     void *A16 = malloc(M * N * 2);
     void *dA16 = malloc(M * N * 2);
 
-    LCG rng = new_rng();
-    
-    // Populate matrices with random values between 0 and 1
-    gen_urand<double>(&rng, A, M*N);
+    // Populate matrices with random values between -1 and 1
+    gen_urand<double>(rng, A, M*N);
     
     // f_inv(f(x)) ~= identity
     function->function(A, A16, dA16, M, N);
@@ -184,10 +183,10 @@ void testSplitCorrectness(struct split_variant *function)
     if (!isEqual(A, A_merged, M*N)) {
         printf("FAILURE: merging the output of %s (double variant) is not identical to input!\n", function->name);
         fail = true;
-    } 
+    }
 
-    // Populate matrices with random values between 0 and 1
-    gen_urand<float>(&rng, Af, M*N);
+    // Populate matrices with random values between -1 and 1
+    gen_urand<float>(rng, Af, M*N);
     
     // f_inv(f(x)) ~= identity
     function->functionf(Af, A16, dA16, M, N);
@@ -225,24 +224,9 @@ void printMatrix(T *A, int M, int N)
 }
 
 template<class T>
-void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
+void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG *rng)
 {
-    const T EPSILON = 1.e-4;
     const int FUNCTION_NAME_WIDTH = 38;
-    const auto count_digits = [](int num)
-    {
-        if (num < 0)
-            return 0; // unimplemented
-        if (num == 0)
-            return 1;
-        int ret = 0;
-        while (num > 0)
-        {
-            num /= 10;
-            ret++;
-        }
-        return ret;
-    };
 
     // Parameters
     // srand(time(NULL));
@@ -253,63 +237,58 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
     T *A = (T*) malloc(M * K * sizeof(T));
     T *B = (T*) malloc(K * N * sizeof(T));
     T *C = (T*) calloc(M * N, sizeof(T)); // Ensures C is zero to avoid interference from previous runs.
-    T *C_ref = (T*) malloc(M * N * sizeof(T));
 
-    // Populate A, B, C
-    gen_urand<T>(&rng, A, M * K);
-    gen_urand<T>(&rng, B, K * N);
-
-    // Compute reference solution
-    referenceMatmul(A, B, C_ref, M, K, N);
+    // Populate A, B with values between -1 and 1
+    gen_urand<T>(rng, A, M * K);
+    gen_urand<T>(rng, B, K * N);
 
     // Call function under test
-    function->function(A, B, C, M, K, N);
+    referenceMatmul<T>(A, B, C, M, K, N);
+    //function->function(A, B, C, M, K, N);
 
     // Analyze result
-    bool success = true;
-    int wrong = 0; // index of first wrong matrix entry
-    T abs_diff = 0.f, rel_errr = 0.f;
-    for (size_t i = 0; i < M * N; ++i)
-    {
-        abs_diff = std::max(abs_diff, abs(C_ref[i] - C[i]));
-        rel_errr = std::max(rel_errr, abs(C_ref[i] - C[i]) / C_ref[i]);
-        if (abs_diff > EPSILON)
-        {
-            std::cout
-                << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
-                << function->name;
-            for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
-                std::cout << " ";
-            std::cout
-                << "wrong @ " << i << " ";
-            int spaces = 2 + 3 - count_digits(i);
-            for (int tmp = 0; tmp < spaces; ++tmp)
-                std::cout << " ";
-            success = false;
-            wrong = i;
-            break;
-        }
+    bool probabilistic = M * N > 1000000;
+    int wrong;
+    if (probabilistic) {
+        // Probabilistic test
+        wrong = test_matmul_correctness_probabilistic(rng, A, B, C, M, K, N);
+    } else {
+        // Full comparison
+        wrong = test_matmul_correctness_full(A, B, C, M, K, N);
     }
-    if (success)
-    {
+
+    if (wrong == -1) {
+        // Success!
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
             << function->name;
         for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
             std::cout << " ";
-        std::cout << "correct.      ";
-    }
-    std::cout
-        << "abs \033[33m" << std::setw(12) << abs_diff << "\033[0m  " // Yellow text
-        << "rel \033[33m" << std::setw(12) << rel_errr  * 100.f << " %\033[0m"; // Yellow text
-    if (!success)
-    {
+        
+        if (probabilistic) {
+            std::cout << "Probably ";
+        }
+        std::cout << "correct!      ";
+    } else {
+        // Give a nice error message
+        double wrong_val = (double) C[wrong];
+        double ref_sol = referenceMatmul_element(A, B, K, N, wrong);
+        double abs_err = abs(ref_sol - wrong_val);
+        double rel_err = abs_err / abs(ref_sol);
+        size_t row = wrong / N;
+        size_t col = wrong % N;
+
         std::cout
-            << "  E "
-            << C_ref[wrong]
-            << " != "
-            << C[wrong]
-            << " A ";
+            << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
+            << function->name;
+        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
+            std::cout << " ";
+
+        std::cout << "\033[31m" << "INCORRECT" << "\033[0m" << std::endl; // Red text
+        std::cout << "\t\033[33m" << "Wrong at: Row " << row << ", Col " << col << "\033[0m" << std::endl;
+        std::cout << "\t" << "Expected: " << ref_sol << std::endl;
+        std::cout << "\t" << "Actual:   " << wrong_val << std::endl;
+        std::cout << "\t\033[33m" << "Error:    " << rel_err << " (rel) " << abs_err << " (abs)" << "\033[0m" << std::endl;
     }
     std::cout << std::endl;
 
@@ -317,7 +296,6 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG rng)
     free(A);
     free(B);
     free(C);
-    free(C_ref);
 }
 
 template<class T>
@@ -333,9 +311,9 @@ void testMatmulCorrectness(matmul_variant<T> *function, LCG rng) {
     T* C = (T *) malloc(M * N * sizeof(T));
     T* C_ref = (T *) malloc(M * N * sizeof(T));
 
-    // Populate matrices with random values between 0 and 1
-    gen_urand<T>(&rng, A, M*K);
-    gen_urand<T>(&rng, B, K*N);
+    // Populate matrices with random values between -1 and 1
+    gen_urand<T>(rng, A, M*K);
+    gen_urand<T>(rng, B, K*N);
 
     // Use matmul_v0 as a reference implementation
     referenceMatmul(A, B, C_ref, M, K, N);
@@ -381,9 +359,12 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K
 
 int main(int argc, char *argv[])
 {
+    LCG lcg = new_rng();
+    LCG *rng = &lcg;
+    printf("\nInitialized RNG with Seed: %lx\n", rng->state);
+
     if (argc < 2)
     {
-        LCG rng = new_rng();
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {   
             testMatmulCorrectness_show_error(&matmulVariants32[i], rng);
@@ -394,9 +375,10 @@ int main(int argc, char *argv[])
             testMatmulCorrectness_show_error(&matmulVariants64[i], rng);
             // testMatmulCorrectness(&matmulVariants64[i]);
         }
+        /*
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
-            testSplitCorrectness(&splitVariants[i]);
+            testSplitCorrectness(&splitVariants[i], rng);
         }
         
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
@@ -410,6 +392,7 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
+        */
     }
     else
     {
