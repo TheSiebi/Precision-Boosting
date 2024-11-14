@@ -220,6 +220,8 @@ __global__ void matmul_v0_kernel(const half *A, const half *B, float *C, int M, 
             warpBs = &Bs[warpCol * WN];
             warpAs += WMMA_M * BK;
         }
+
+        __syncthreads();
     }
 
     // Store results back to C matrix
@@ -416,6 +418,8 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
             warpAs += WMMA_M * BK;
             warpdAs += WMMA_M * BK;
         }
+
+        __syncthreads();
     }
 
     // Store results back to C matrix
