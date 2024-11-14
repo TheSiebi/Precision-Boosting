@@ -226,16 +226,14 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
             size_t col = wrong % N;
 
             std::cout
-                << "\033[31m" << "[ERROR]    " << "\033[0m" // Red text
-                << function->name;
-            for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
-                std::cout << " ";
+                << "\033[31m" << "[FAILURE]  " // Red text
+                << "\033[0m" << function->name
+                << std::endl; // Yellow text
 
-            std::cout << "\033[31m" << "INCORRECT" << "\033[0m" << std::endl; // Red text
-            std::cout << "\t" << "Seed: " << std::hex << starting_seed << std::dec << "\tM=" << M << " K=" << K << " N=" << N << std::endl;
-            std::cout << "\t\033[33m" << "Wrong at: Row " << row << ", Col " << col << "\033[0m" << std::endl;
-            std::cout << "\t" << "Expected: " << ref_sol << "\tActual:   " << wrong_val << std::endl;
-            std::cout << "\t\033[33m" << "Error:    " << rel_err << " (rel) " << abs_err << " (abs)" << "\033[0m" << std::endl;
+            std::cout << "\t" << "Seed: \033[33m" << std::hex << starting_seed << std::dec << "\033[0m\tM=\033[33m" << M << "\033[0m K=\033[33m" << K << "\033[0m N=\033[33m" << N << "\033[0m" << std::endl;
+            std::cout << "\t" << "Wrong at: \033[33mRow " << row << "\033[0m, \033[33mCol " << col << "\033[0m" << std::endl;
+            std::cout << "\t" << "Expected: \033[33m" << ref_sol << "\033[0m\tActual:   \033[33m" << wrong_val << "\033[0m" << std::endl;
+            std::cout << "\t" << "Error:    \033[33m" << rel_err << "\033[0m (rel) \033[33m" << abs_err << "\033[0m (abs)" << std::endl;
             break;
         }
 
@@ -249,10 +247,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         // Success!
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
-            << function->name;
-        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
-            std::cout << " ";
-        std::cout << "Correct!      " << std::endl;
+            << function->name << std::endl;
     }
 }
 
