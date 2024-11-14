@@ -593,16 +593,33 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
     PROFILE_SEGMENT_FUNCTION_END();
 }
 
+/**
+ * flops16:
+ * 4*(2*M*K*N) (4 matmuls)
+ * 
+ * flops32:
+ * 2*M*K flops32 + 2*K*N flops32 (splitting A and B)
+ * + 5*N*M flops32 (merging with merge_cuda)
+ */
 flop_counts matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<0>(A, B, C, M, K, N);
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = {8L*M*K*N, 2*M*K + 2*K*N + 5*N*M, 0L};
     return counts;
 }
 
+/**
+ * flops16:
+ * 3*(2*M*K*N) (3 matmuls)
+ * 
+ * flops32:
+ * 2*M*K flops32 + 2*K*N flops32 (splitting A and B)
+ * + N*M flops32 (accumulating outside tensor cores)
+ * + 2*N*M flops32 (merging into C)
+ */
 flop_counts matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<1>(A, B, C, M, K, N);
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = {6L*M*K*N, 2*M*K + 2*K*N + 3*N*M, 0L};
     return counts;
 }
