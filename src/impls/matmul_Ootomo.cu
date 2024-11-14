@@ -604,7 +604,7 @@ void matmul_Oootomo(float *A, float *B, float *C, int M, int K, int N)
 flop_counts matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<0>(A, B, C, M, K, N);
-    flop_counts counts = {8L*M*K*N, 2*M*K + 2*K*N + 5*N*M, 0L};
+    flop_counts counts = {8L*M*K*N, 2L*M*K + 2L*K*N + 5L*N*M, 0L};
     return counts;
 }
 
@@ -613,13 +613,15 @@ flop_counts matmul_Oootomo_v0(float *A, float *B, float *C, int M, int K, int N)
  * 3*(2*M*K*N) (3 matmuls)
  * 
  * flops32:
- * 2*M*K flops32 + 2*K*N flops32 (splitting A and B)
- * + N*M flops32 (accumulating outside tensor cores)
- * + 2*N*M flops32 (merging into C)
+ * 2*M*K + 2*K*N (splitting A and B)
+ * + N*M (accumulating outside tensor cores)
+ * + 2*N*M (merging into C)
+ * 
+ * NOTE: merging/accumulation flops32 should double-checked again
  */
 flop_counts matmul_Oootomo_v1(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Oootomo<1>(A, B, C, M, K, N);
-    flop_counts counts = {6L*M*K*N, 2*M*K + 2*K*N + 3*N*M, 0L};
+    flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
     return counts;
 }
