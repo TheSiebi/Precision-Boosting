@@ -352,15 +352,16 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K
     T *A = (T*)calloc(M * K, sizeof(*A));
     T *B = (T*)calloc(K * N, sizeof(*B));
     T *C = (T*)calloc(M * N, sizeof(*C));
+    flop_counts counts;
 
     profiler_reset();
     for(int i = 0; i < warmup; i++)
         variant.function(A, B, C, M, K, N);
     profiler_reset();
     for(int i = 0; i < iterations; i++)
-        variant.function(A, B, C, M, K, N);
+        counts = variant.function(A, B, C, M, K, N);
     printf("\n----Profiling %s------\n", variant.name);
-    profiler_segments_print();
+    profiler_segments_print(counts.flops16, counts.flops32, counts.flops64);
 
     free(A);
     free(B);
