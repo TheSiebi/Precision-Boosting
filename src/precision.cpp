@@ -54,7 +54,7 @@ int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, 
     while (num_to_test--) {
         // Generate random index and test
         size_t index = next_below(rng, (uint32_t) (M * N));
-        if (!test_matmul_correctness_single<T>(A, B, C, M, K, N, index)) {
+        if (!test_matmul_correctness_single<T>(A, B, C, K, N, index)) {
             return index;
         }
     }
@@ -67,7 +67,7 @@ template<class T>
 int test_matmul_correctness_full(T *A, T *B, T *C, size_t M, size_t K, size_t N) {
     for (size_t index = 0; index < M * N; index++) {
         // Test every index
-        if (!test_matmul_correctness_single<T>(A, B, C, M, K, N, index)) {
+        if (!test_matmul_correctness_single<T>(A, B, C, K, N, index)) {
             return index;
         }
     }
@@ -76,15 +76,14 @@ int test_matmul_correctness_full(T *A, T *B, T *C, size_t M, size_t K, size_t N)
 
 /// Returns true if the error is within acceptable bounds
 template<class T>
-bool test_matmul_correctness_single(T *A, T *B, T *C, size_t M, size_t K, size_t N, size_t index) {
-    const double MAX_REL_ERR = 1e-2;
+bool test_matmul_correctness_single(T *A, T *B, T *C, size_t K, size_t N, size_t index) {
     // Reference solution in double precision
     double c_ij = referenceMatmul_element(A, B, K, N, index);
     // Calculate error
     double abs_err_ij = abs(c_ij - C[index]);
     double rel_err_ij = abs_err_ij / abs(c_ij); 
     // Check cut-off bounds
-    return rel_err_ij <= MAX_REL_ERR;
+    return abs_err_ij <= MAX_ABSOLUTE_ERROR || rel_err_ij <= MAX_RELATIVE_ERROR;
 }
 
 template<class T>
@@ -107,7 +106,6 @@ double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index) {
     return c_ij;
 }
 
-
 template int test_matmul_correctness_probabilistic<float>(LCG *rng, float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template int test_matmul_correctness_probabilistic<double>(LCG *rng, double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
@@ -116,3 +114,23 @@ template int test_matmul_correctness_full<double>(double *A, double *B, double *
 
 template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
 template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);
+
+template<class T>
+bool test_equality(T *A, T *B, size_t N) {
+    for (size_t i = 0; i < N; i++) {
+        double expected = B[i];
+        double actual = A[i];
+        // Calculate error
+        double abs_err_ij = abs(expected - actual);
+        double rel_err_ij = abs_err_ij / abs(expected);
+        // Check cut-off bounds
+        if (abs_err_ij > MAX_ABSOLUTE_ERROR && rel_err_ij > MAX_RELATIVE_ERROR) {
+            return false;
+        }
+    }
+    // All errors within acceptable range
+    return true;
+}
+
+template bool test_equality<float>(float *A, float *B, size_t N);
+template bool test_equality<double>(double *A, double *B, size_t N);

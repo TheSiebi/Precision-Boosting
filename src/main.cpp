@@ -86,7 +86,7 @@ matmul_variant<double> matmulVariants64[] =
         .description = "cuBLAS",
         .countFlops = matmul_flopcount_64,
     },
-    {
+    /*{
         .function = matmul_Ozaki_v0,
         .name = "matmul_Ozaki_v0 (slow)",
         .description = "Ozaki FP64 using FP32 on CPU",
@@ -97,7 +97,7 @@ matmul_variant<double> matmulVariants64[] =
         .name = "matmul_Ozaki_v0_sort_then_accumulate",
         .description = "Ozaki FP64 using FP32 on CPU",
         .countFlops = matmul_flopcount_64,
-    },
+    },*/
 };
 
 struct split_variant splitVariants[] =
@@ -120,48 +120,6 @@ struct split_variant splitVariants[] =
     }
 };
 
-template<class T>
-void referenceMatmul(T *A, T *B, T *C, int M, int K, int N)
-{
-    for (int i = 0; i < M; i++) {
-        for (int j = 0; j < N; j++) {
-            T c_ij = 0.0;
-            for (int k = 0; k < K; k++) {
-                c_ij += A[i*K + k] * B[k*N + j];
-            }
-            C[i*N + j] = c_ij;
-        }
-    }
-}
-
-bool isEqual(const double *A, const double *B, int N)
-{
-    double epsilon = 0.001;
-    _Bool fail = false;
-    for (int i = 0; i < N; i++) {
-        double err = fabs(A[i] - B[i]);
-        if (err > epsilon) {
-            fail = true;
-            break;
-        }
-    }
-    return !fail;
-}
-
-bool isEqual(const float *A, const float *B, int N)
-{
-    float epsilon = 0.002;
-    _Bool fail = false;
-    for (int i = 0; i < N; i++) {
-        float err = fabsf(A[i] - B[i]);
-        if (err > epsilon) {
-            fail = true;
-            break;
-        }
-    }
-    return !fail;
-}
-
 void testSplitCorrectness(struct split_variant *function, LCG* rng)
 {
     int M, N;
@@ -179,8 +137,8 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
     // f_inv(f(x)) ~= identity
     function->function(A, A16, dA16, M, N);
     function->invFunction(A16, dA16, A_merged, M, N);
-    _Bool fail = false;
-    if (!isEqual(A, A_merged, M*N)) {
+    bool fail = false;
+    if (!test_equality(A_merged, A, M*N)) {
         printf("FAILURE: merging the output of %s (double variant) is not identical to input!\n", function->name);
         fail = true;
     }
@@ -191,7 +149,7 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
     // f_inv(f(x)) ~= identity
     function->functionf(Af, A16, dA16, M, N);
     function->invFunctionf(A16, dA16, Af_merged, M, N);
-    if (!isEqual(Af, Af_merged, M*N)) {
+    if (!test_equality(Af_merged, Af, M*N)) {
         printf("FAILURE: merging the output of %s (float variant) is not identical to input!\n", function->name);
         fail = true;
     } 
@@ -224,12 +182,13 @@ void printMatrix(T *A, int M, int N)
 }
 
 template<class T>
-void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG *rng)
+void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 {
     const int FUNCTION_NAME_WIDTH = 38;
 
     // Parameters
     // srand(time(NULL));
+    // const size_t runs = 100;
     const size_t M = 1024, K = 512, N = 256;
     // printf("Settings: M = %lu, K = %lu, N = %lu\n", M, K, N);
 
@@ -243,8 +202,7 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG *rng)
     gen_urand<T>(rng, B, K * N);
 
     // Call function under test
-    referenceMatmul<T>(A, B, C, M, K, N);
-    //function->function(A, B, C, M, K, N);
+    function->function(A, B, C, M, K, N);
 
     // Analyze result
     bool probabilistic = M * N > 1000000;
@@ -299,44 +257,6 @@ void testMatmulCorrectness_show_error(matmul_variant<T>* function, LCG *rng)
 }
 
 template<class T>
-void testMatmulCorrectness(matmul_variant<T> *function, LCG rng) {
-    // A * B = C
-    // A is m*k (m rows, k columns)
-    // B is k*n (k rows, n columns)
-    // C is m*n (m rows, n columns)
-    int M, K, N;
-    M = K = N = 32;
-    T* A = (T *) malloc(M * K * sizeof(T));
-    T* B = (T *) malloc(K * N * sizeof(T));
-    T* C = (T *) malloc(M * N * sizeof(T));
-    T* C_ref = (T *) malloc(M * N * sizeof(T));
-
-    // Populate matrices with random values between -1 and 1
-    gen_urand<T>(rng, A, M*K);
-    gen_urand<T>(rng, B, K*N);
-
-    // Use matmul_v0 as a reference implementation
-    referenceMatmul(A, B, C_ref, M, K, N);
-    function->function(A, B, C, M, K, N);
-    
-    if (!isEqual(C, C_ref, M*N)) 
-    {
-        printf("FAILURE: %s is NOT identical to the reference\n", function->name);
-        printf("Result\n");
-        printMatrix(C, M, N);
-        printf("Expected\n");
-        printMatrix(C_ref, M, N);
-    } else {
-        printf("SUCCESS: %s passed correctness tests!\n", function->name);
-    }
-
-    free(A);
-    free(B);
-    free(C);
-    free(C_ref);
-}
-
-template<class T>
 void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K, int N)
 {
     T *A = (T*)calloc(M * K, sizeof(*A));
@@ -367,20 +287,18 @@ int main(int argc, char *argv[])
     {
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {   
-            testMatmulCorrectness_show_error(&matmulVariants32[i], rng);
-            // testMatmulCorrectness(&matmulVariants32[i]);
+            testMatmulCorrectness(&matmulVariants32[i], rng);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            testMatmulCorrectness_show_error(&matmulVariants64[i], rng);
-            // testMatmulCorrectness(&matmulVariants64[i]);
+            testMatmulCorrectness(&matmulVariants64[i], rng);
         }
-        /*
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
             testSplitCorrectness(&splitVariants[i], rng);
         }
         
+        /*
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
 
