@@ -162,35 +162,38 @@ __global__ void matmul_v0_kernel(const half *A, const half *B, float *C, int M, 
         }
     }
 
+    
+    // Loads are vectorized and each thread will load elemsPerThread elements into SMEM   
+    const int elemsPerThread = 2;
     // Calculate indices that this thread will load from GMEM to SMEM
-    // Loads are vectorized and each thread will load 4 elements into SMEM
     // Note that for coalescing, it's important that consecutive threadIDs
     // access consecutive memory addresses
-    const int innerRowA = threadIdx.x / (BK / 4);
-    const int innerColA = threadIdx.x % (BK / 4);
-    const int innerRowB = threadIdx.x / (BN / 4);
-    const int innerColB = threadIdx.x % (BN / 4);
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
     // complete #rows that gets loaded in one loading iteration
-    const int strideA = 4 * blockDim.x / BK;
-    const int strideB = 4 * blockDim.x / BN;
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int columnStrideA = elemsPerThread * blockDim.x % BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+    const int columnStrideB = elemsPerThread * blockDim.x % BN;
+
+    const int loadIterationsA = BM * BK / (elemsPerThread * blockDim.x);
+    const int loadIterationsB = BK * BN / (elemsPerThread * blockDim.x);
 
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
         // populate SMEM cache using vectorized loads
-        for (int loadOffset = 0; loadOffset < BM; loadOffset += strideA)
+        for (int i = 0; i < loadIterationsA; i++)
         {
-            reinterpret_cast<half2 *>(&As[(innerRowA + loadOffset) * BK + innerColA * 4])[0] = 
-                reinterpret_cast<const half2 *>(&A[(innerRowA + loadOffset) * K + innerColA * 4])[0];
-            reinterpret_cast<half2 *>(&As[(innerRowA + loadOffset) * BK + innerColA * 4 + 2])[0] = 
-                reinterpret_cast<const half2 *>(&A[(innerRowA + loadOffset) * K + innerColA * 4 + 2])[0];
+            reinterpret_cast<half2 *>(&As[(innerRowA + i * rowStrideA) * BK + innerColA * elemsPerThread + i * columnStrideA])[0] = 
+                reinterpret_cast<const half2 *>(&A[(innerRowA + i * rowStrideA) * K + innerColA * elemsPerThread + i * columnStrideA])[0];
         }
-        for (int loadOffset = 0; loadOffset < BK; loadOffset += strideB)
+        for (int i = 0; i < loadIterationsB; i++)
         {
-            reinterpret_cast<half2 *>(&Bs[(innerRowB + loadOffset) * BN + innerColB * 4])[0] = 
-                reinterpret_cast<const half2 *>(&B[(innerRowB + loadOffset) * N + innerColB * 4])[0];
-            reinterpret_cast<half2 *>(&Bs[(innerRowB + loadOffset) * BN + innerColB * 4 + 2])[0] = 
-                reinterpret_cast<const half2 *>(&B[(innerRowB + loadOffset) * N + innerColB * 4 + 2])[0];
+            reinterpret_cast<half2 *>(&Bs[(innerRowB + i * rowStrideB) * BN + innerColB * elemsPerThread + i * columnStrideB])[0] = 
+                reinterpret_cast<const half2 *>(&B[(innerRowB + i * rowStrideB) * N + innerColB * elemsPerThread + i * columnStrideB])[0];
         }
 
         __syncthreads();
@@ -279,18 +282,18 @@ __device__ __forceinline__ struct split split_Ootomo(float4 value)
  * and saves them to SMEM
  */
 template<typename loadType, typename matType>
-__device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int innerRow, int rowOffset, int innerCol, half *As, half *dAs, int AsCols)
+__device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int innerRow, int rowOffset, int colOffset, int innerCol, half *As, half *dAs, int AsCols)
 {
     loadType tmp = *(reinterpret_cast<const loadType *>(A + (innerRow + rowOffset) * ACols + innerCol * 4));
     struct split tmp_split = split_Ootomo(tmp);
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.x.x;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.x.y;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.y.x;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.y.y;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.dx.x;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.dx.y;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.dy.x;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.dy.y;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0 + colOffset] = tmp_split.x.x;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1 + colOffset] = tmp_split.x.y;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2 + colOffset] = tmp_split.y.x;
+    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3 + colOffset] = tmp_split.y.y;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0 + colOffset] = tmp_split.dx.x;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1 + colOffset] = tmp_split.dx.y;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2 + colOffset] = tmp_split.dy.x;
+    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3 + colOffset] = tmp_split.dy.y;
 
     // assert(fabs(((float)tmp_split.x.x + (float)tmp_split.dx.x / 2048.0f) - tmp.x) < 0.001f);
     // assert(fabs(((float)tmp_split.x.y + (float)tmp_split.dx.y / 2048.0f) - tmp.y) < 0.001f);
@@ -345,29 +348,35 @@ __global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M
         }
     }
 
-    // Calculate indices that this thread will load from GMEM to SMEM
     // Loads are vectorized and each thread will load 4 elements into SMEM
+    const int elemsPerThread = 4;
+    // Calculate indices that this thread will load from GMEM to SMEM
     // Note that for coalescing, it's important that consecutive threadIDs
     // access consecutive memory addresses
-    const int innerRowA = threadIdx.x / (BK / 4);
-    const int innerColA = threadIdx.x % (BK / 4);
-    const int innerRowB = threadIdx.x / (BN / 4);
-    const int innerColB = threadIdx.x % (BN / 4);
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
     // complete #rows that gets loaded in one loading iteration
-    const int strideA = 4 * blockDim.x / BK;
-    const int strideB = 4 * blockDim.x / BN;
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int columnStrideA = elemsPerThread * blockDim.x % BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+    const int columnStrideB = elemsPerThread * blockDim.x % BN;
+
+    const int loadIterationsA = BM * BK / (elemsPerThread * blockDim.x);
+    const int loadIterationsB = BK * BN / (elemsPerThread * blockDim.x);
 
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
         // populate SMEM cache
-        for (int loadOffset = 0; loadOffset < BM; loadOffset += strideA)
+        for (int i = 0; i < loadIterationsA; i++)
         {
-            loadAndSplit<float4, float>(A, K, innerRowA, loadOffset, innerColA, As, dAs, BK);
+            loadAndSplit<float4, float>(A, K, innerRowA, i * rowStrideA, i * columnStrideA, innerColA, As, dAs, BK);
         }
-        for (int loadOffset = 0; loadOffset < BK; loadOffset += strideB)
+        for (int i = 0; i < loadIterationsB; i++)
         {
-            loadAndSplit<float4, float>(B, N, innerRowB, loadOffset, innerColB, Bs, dBs, BN);
+            loadAndSplit<float4, float>(B, N, innerRowB, i * rowStrideB, i * columnStrideB, innerColB, Bs, dBs, BN);
         }
 
         __syncthreads();
