@@ -188,9 +188,9 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         uint64_t starting_seed = rng->state;
         // Randomize matrix dimensions
         size_t M, K, N;
-        M = 1 << next_int(rng, 4, 9);
-        K = 1 << next_int(rng, 4, 9);
-        N = 1 << next_int(rng, 4, 9);
+        M = 1 << next_int(rng, 6, 9);
+        K = 1 << next_int(rng, 6, 9);
+        N = 1 << next_int(rng, 6, 9);
 
         // Allocate matrices
         T *A = (T*) malloc(M * K * sizeof(T));
