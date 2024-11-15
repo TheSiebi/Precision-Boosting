@@ -21,8 +21,8 @@ __global__ void basic_mixed_precision_matmul(const half* A, const half* B, float
     const int col = tid % N;
     C[index(row, col, M, N)] = 0.f;
     for (int l = 0; l < K; ++l)
-        // C[index(row, col, M, N)] += (float)(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
-        C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
+        //C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
+        C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)]) * __half2float(B[index(l, col, K, N)]);
 }
 
 flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, int N)
