@@ -126,7 +126,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
-std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b)
+std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b, int* nA_ptr, int* nB_ptr)
 {
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
@@ -134,12 +134,14 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
     // D = Split_Mat(A, inf, delta); nA = length(D);
     const auto D = ozaki_split(m, n, a, INT_MAX);
     const auto nA = D.size();
+    *nA_ptr = (int) nA;
 
     // E = Split_Mat(BT, inf, delta); nB = length(E);
     // Do we really need to transpose B?
     // transpose(n, p, b);
     const auto E = ozaki_split(n, p, b, INT_MAX); // remove const qualifier if you do wish to transpose
     const auto nB = E.size();
+    *nB_ptr = (int) nB;
 
     // for r = 1 : nB, E{r} = E{r}T ; end
     // again, why transpose?
@@ -160,19 +162,26 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
-    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
+    int nA, nB;
+    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
             c[ij] += matrix[ij];
 
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = 
+    {
+        0L,
+        8L + (4L*m+3L*m*n)*nA + (4L*n+3L*n*p)*nB + 2L*nA*nB*m*n*p,
+        (2L*m*n+m)*nA + (2L*n*p+n)*nB + m*p*nA*nB
+    };
     return counts;
 }
 
 flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
 {
-    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b);
+    int nA, nB;
+    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
     {
@@ -185,6 +194,11 @@ flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c
             c[ij] += s;
     }
 
-    flop_counts counts = {0L, 0L, 0L};
+    flop_counts counts = 
+    {
+        0L,
+        8L + (4L*m+3L*m*n)*nA + (4L*n+3L*n*p)*nB + 2L*nA*nB*m*n*p,
+        (2L*m*n+m)*nA + (2L*n*p+n)*nB + m*p*nA*nB
+    };
     return counts;
 }
