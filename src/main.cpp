@@ -50,14 +50,19 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Very basic Ootomo using CUDA",
     },
     {
-        .function = matmul_Oootomo_v0,
+        .function = matmul_Ootomo_v0,
         .name = "Ootomo v0",
         .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
     },
     {
-        .function = matmul_Oootomo_v1,
+        .function = matmul_Ootomo_v1,
         .name = "Ootomo v1",
         .description = "Ootomo algorithm as described by Code3 in the paper",
+    },
+    {
+        .function = matmul_Ootomo_v2,
+        .name = "Ootomo v2",
+        .description = "Ootomo algorithm as described by Code3 in the paper with storing B in col major to shared memory",
     },
     {
         .function = matmul_cuBLAS32,
@@ -306,6 +311,8 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
+        
+        profile(matmulVariants32[9], 0, 1, 8192, 8192, 8192);
         */
     }
     else
