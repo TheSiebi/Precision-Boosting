@@ -55,7 +55,7 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schem
 
     if (existsA && existsB && existsC) {
         // All matrices exist; load them
-        printf("Matrices already exist; loading them\n");
+        //printf("Matrices already exist; loading them\n");
         T* A = (T*)malloc(M * K * sizeof(T));
         T* B = (T*)malloc(K * N * sizeof(T));
         T* C = (T*)malloc(M * N * sizeof(T));
@@ -101,7 +101,7 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schem
         return {nullptr, nullptr, nullptr};
     }
 
-    printf("Matrices do not exist; generating them\n");
+    //printf("Matrices do not exist; generating them\n");
 
     if (schema == "uniform") {
         gen_urand<T>(rng, A, M * K);
