@@ -27,7 +27,7 @@ template<class T>
 int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, size_t K, size_t N);
 
 template<class T>
-int test_matmul_correctness_full(T *A, T *B, T *C, size_t M, size_t K, size_t N);
+int test_matmul_correctness_full(T *C, T *C_reference, size_t M, size_t N);
 
 template<class T>
 bool test_matmul_correctness_single(T *A, T *B, T *C, size_t K, size_t N, size_t index);
@@ -41,8 +41,8 @@ double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index);
 extern template int test_matmul_correctness_probabilistic<float>(LCG *rng, float *A, float *B, float *C, size_t M, size_t K, size_t N);
 extern template int test_matmul_correctness_probabilistic<double>(LCG *rng, double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
-extern template int test_matmul_correctness_full<float>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-extern template int test_matmul_correctness_full<double>(double *A, double *B, double *C, size_t M, size_t K, size_t N);
+extern template int test_matmul_correctness_full<float>(float *C, float *C_reference, size_t M, size_t N);
+extern template int test_matmul_correctness_full<double>(double *C, double *C_reference, size_t M, size_t N);
 
 extern template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
 extern template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);

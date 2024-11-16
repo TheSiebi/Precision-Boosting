@@ -11,10 +11,10 @@ CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G -Xptxas -v
 CC=gcc
 CPP=g++
 
+OBJ_FILES=build/profiler.o build/timer.o build/rand.o build/precision.o build/cJSON.o build/matcache.o
 OBJ_FILES+=build/matmul_simpleMarkidis_v0.o
 OBJ_FILES+=build/matmul_simpleOotomo_v0.o
 OBJ_FILES+=build/matmul_Ootomo.o
-OBJ_FILES=build/profiler.o build/timer.o build/rand.o build/precision.o build/cJSON.o build/matcache.o
 OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o
 OBJ_FILES+=build/matmul_cuBLAS.o
 OBJ_FILES+=build/matmul_Ozaki_v0.o

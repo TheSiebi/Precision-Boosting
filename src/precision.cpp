@@ -45,10 +45,6 @@ template double rel_residual<double>(double *result, double *reference, int n);
 /// Returns the index of an element with error that is too great. If none is found, returns -1
 template<class T>
 int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, size_t K, size_t N) {
-    if (M * N < 1e6) {
-        // Just do a full correctness test
-        return test_matmul_correctness_full<T>(A, B, C, M, K, N);
-    }
     // Test the square root of the matrix size
     size_t num_to_test = 1e6 + sqrt(M * N - 1e6);
     while (num_to_test--) {
@@ -64,10 +60,13 @@ int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, 
 
 /// Returns the index of an element with error that is too great. If none is found, returns -1
 template<class T>
-int test_matmul_correctness_full(T *A, T *B, T *C, size_t M, size_t K, size_t N) {
+int test_matmul_correctness_full(T *C, T *C_reference, size_t M, size_t N) {
     for (size_t index = 0; index < M * N; index++) {
-        // Test every index
-        if (!test_matmul_correctness_single<T>(A, B, C, K, N, index)) {
+        // Calculate error
+        double abs_err_ij = abs(C_reference[index] - C[index]);
+        double rel_err_ij = abs_err_ij / abs(C_reference[index]); 
+        // Check cut-off bounds
+        if (abs_err_ij > MAX_ABSOLUTE_ERROR && rel_err_ij > MAX_RELATIVE_ERROR) {
             return index;
         }
     }
@@ -109,8 +108,8 @@ double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index) {
 template int test_matmul_correctness_probabilistic<float>(LCG *rng, float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template int test_matmul_correctness_probabilistic<double>(LCG *rng, double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
-template int test_matmul_correctness_full<float>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template int test_matmul_correctness_full<double>(double *A, double *B, double *C, size_t M, size_t K, size_t N);
+template int test_matmul_correctness_full<float>(float *C, float *C_reference, size_t M, size_t N);
+template int test_matmul_correctness_full<double>(double *C, double *C_reference, size_t M, size_t N);
 
 template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
 template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);

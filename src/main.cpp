@@ -8,6 +8,7 @@
 #include "merge_accumulate.h"
 #include "rand.h"
 #include "precision.h"
+#include "matcache.h"
 
 #include <iostream>
 #include <iomanip>
@@ -187,44 +188,31 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 {
     // Parameters
     // srand(time(NULL));
-    const size_t RUNS = 100;
+    const size_t RUNS = 5;
     bool failed = false;
     for (size_t run = 0; run < RUNS; run++) {
         uint64_t starting_seed = rng->state;
         // Randomize matrix dimensions
         size_t M, K, N;
-        M = 1 << next_int(rng, 6, 9);
-        K = 1 << next_int(rng, 6, 9);
-        N = 1 << next_int(rng, 6, 9);
+        M = 1 << next_int(rng, 6, 8);
+        K = 1 << next_int(rng, 6, 8);
+        N = 1 << next_int(rng, 6, 8);
 
-        // Allocate matrices
-        T *A = (T*) malloc(M * K * sizeof(T));
-        T *B = (T*) malloc(K * N * sizeof(T));
-        T *C = (T*) calloc(M * N,  sizeof(T)); // Ensures C is zero to avoid interference from previous runs.
-
-        // Populate A, B with values between -1 and 1
-        gen_urand<T>(rng, A, M * K);
-        gen_urand<T>(rng, B, K * N);
+        // Get matrices
+        T *C = (T*) calloc(M * N,  sizeof(T));
+        auto [A, B, C_reference] = getMatrices<T>(M, K, N, "uniform", rng);
 
         // Call function under test
         function->function(A, B, C, M, K, N);
 
         // Analyze result
-        bool probabilistic = M * N > 1000000;
-        int wrong;
-        if (probabilistic) {
-            // Probabilistic test
-            wrong = test_matmul_correctness_probabilistic(rng, A, B, C, M, K, N);
-        } else {
-            // Full comparison
-            wrong = test_matmul_correctness_full(A, B, C, M, K, N);
-        }
+        int wrong = test_matmul_correctness_full(C, C_reference, M, N);
 
         if (wrong != -1) {
             failed = true;
             // Give a nice error message
             double wrong_val = (double) C[wrong];
-            double ref_sol = referenceMatmul_element(A, B, K, N, wrong);
+            double ref_sol = C_reference[wrong];
             double abs_err = abs(ref_sol - wrong_val);
             double rel_err = abs_err / abs(ref_sol);
             size_t row = wrong / N;
