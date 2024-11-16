@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <vector>
 #include "../timer.h"
+#include "../profiler.h"
 
 int ix(int row, int col, int rows, int cols)
 {
@@ -163,11 +164,14 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
 {
     int nA, nB;
+    PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
             c[ij] += matrix[ij];
+
+    PROFILE_FUNCTION_END();
 
     flop_counts counts = 
     {
@@ -181,6 +185,7 @@ flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p
 flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
 {
     int nA, nB;
+    PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
@@ -194,6 +199,8 @@ flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c
             c[ij] += s;
     }
 
+    PROFILE_FUNCTION_END();
+    
     flop_counts counts = 
     {
         0L,
