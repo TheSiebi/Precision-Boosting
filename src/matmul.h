@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include "timer.h"
 
+flop_counts matmul_reference32(float *A, float *B, float *C, int M, int K, int N);
+flop_counts matmul_reference64(double *A, double *B, double *C, int M, int K, int N);
+
 flop_counts matmul_v0(double *A, double *B, double *C, int M, int K, int N);
 // flop_counts matmul_v1(double *A, double *B, double *C, int M, int K, int N);
 // flop_counts matmul_v2(double *A, double *B, double *C, int M, int K, int N);

@@ -3,6 +3,7 @@ build/*
 timings/*
 plotting_venv
 .vscode/*
+matcache/*
 
 # Prerequisites
 *.d
