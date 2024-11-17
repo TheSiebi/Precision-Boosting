@@ -62,7 +62,7 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_Ootomo_v2,
         .name = "Ootomo v2",
-        .description = "Ootomo algorithm as described by Code3 in the paper with storing B in col major to shared memory",
+        .description = "Same as Ootomo_v1 but with better data reuse",
     },
     {
         .function = matmul_cuBLAS32,
@@ -307,7 +307,7 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
-
+        
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
