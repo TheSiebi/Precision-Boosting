@@ -93,6 +93,11 @@ matmul_variant<double> matmulVariants64[] =
         .name = "matmul_Ozaki_v0_sort_then_accumulate",
         .description = "Ozaki FP64 using FP32 on CPU",
     },
+    {
+        .function = matmul_Ootomo_double_v0,
+        .name = "Ootomo double v0",
+        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
+    }
 };
 
 struct split_variant splitVariants[] =
@@ -299,9 +304,10 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i], rng);
         }
         
-        /*
+        /*        
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
+        profile(matmulVariants64[4], 0, 1, 4096, 4096, 4096);
 
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
@@ -313,7 +319,7 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
         
         profile(matmulVariants32[9], 0, 1, 8192, 8192, 8192);
-        */
+        */        
     }
     else
     {

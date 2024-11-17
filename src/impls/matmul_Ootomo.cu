@@ -104,22 +104,27 @@ constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
 /**
  * Simple kernel that splits a float matrix into two half matrices according to the Ootoma paper
  */
-__global__ void split_cuda(float *A, half *A0, half *A1)
+template<typename srcType, typename trgtType>
+__global__ void split_cuda(srcType *A, trgtType *A0, trgtType *A1)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    float value = A[i];
-    half mainPart = (half)value;
+    srcType value = A[i];
+    trgtType mainPart = (trgtType)value;
     A0[i] = mainPart;
-    A1[i] = (half)((value - (float)mainPart) * 2048.0f);
+    A1[i] = (trgtType)((value - (srcType)mainPart) * 2048.0f);
 }
 
 /**
  * Simple kernel that performs the merge described in the Ootomo paper including the smallest term. 
  */
-__global__ void merge_cuda(float *C, float *AB, float *dAB, float *AdB, float *dAdB)
+template<typename srcType, typename trgtType, bool useLastTerm>
+__global__ void merge_cuda(trgtType *C, srcType *AB, srcType *dAB, srcType *AdB, srcType *dAdB)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    C[i] = AB[i] + (dAB[i] + AdB[i]) / 2048.0f + dAdB[i] / 4194304.0f;
+    if constexpr(useLastTerm)
+        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / 2048.0f + (trgtType) dAdB[i] / 4194304.0f;
+    else 
+        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / 2048.0f;
 }
 
 /**
@@ -656,9 +661,9 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
-        split_cuda<<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        split_cuda<float, half><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
         PRINT_ON_ERROR(cudaGetLastError());
-        split_cuda<<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        split_cuda<float, half><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -760,7 +765,7 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("merge");
         int threadsPerBlock = 256;
-        merge_cuda<<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        merge_cuda<float, float, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -837,5 +842,158 @@ flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, int M, int K, int N)
 {
     matmul_Ootomo<2>(A, B, C, M, K, N);
     flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
+    return counts;
+}
+
+
+template<int version>
+void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N) 
+{
+    assert((M % 16) == 0);
+    assert((K % 16) == 0);
+    assert((N % 16) == 0);
+
+    PROFILE_FUNCTION_SEGMENT_START("allocate gpu");
+    
+    int AElems = M * K;
+    int BElems = K * N;
+    int CElems = M * N;
+    double *deviceAFull, *deviceBFull, *deviceCFull;
+    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, AElems * sizeof(double)));
+    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BElems * sizeof(double)));
+    PRINT_ON_ERROR(cudaMalloc(&deviceCFull, CElems * sizeof(double)));
+
+    // these identifiers are just outside the if because otherwise, compilation does not work
+    float *deviceA[2], *deviceB[2];
+    // {AB, dAB, AdB, dAdB}
+    float *deviceC[4];
+    if constexpr(version == 0)
+    {
+        for(int i = 0; i < 2; i++)
+        {
+            PRINT_ON_ERROR(cudaMalloc(&deviceA[i], AElems * sizeof(float)));
+            PRINT_ON_ERROR(cudaMalloc(&deviceB[i], BElems * sizeof(float)));
+        }
+        for(int i = 0; i < 4; i++)
+            PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CElems * sizeof(float)));
+    }
+
+    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
+    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, AElems * sizeof(double), cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BElems * sizeof(double), cudaMemcpyHostToDevice));
+
+    if constexpr(version == 0)
+    {
+        PROFILE_SEGMENTS_SWITCH("split");
+        int threadsPerBlock = 256;
+        split_cuda<double, float><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
+        split_cuda<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
+
+        PRINT_ON_ERROR(cudaDeviceSynchronize());
+    }
+
+    PROFILE_SEGMENTS_SWITCH("matmul");
+    if constexpr(version == 0)
+    {
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<0>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        } 
+        else 
+        {
+            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<1>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
+    } 
+
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
+
+    if constexpr(version == 0)
+    {
+        PROFILE_SEGMENTS_SWITCH("merge");
+        int threadsPerBlock = 256;
+        merge_cuda<float, double, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        PRINT_ON_ERROR(cudaGetLastError());
+
+        PRINT_ON_ERROR(cudaDeviceSynchronize());
+    }
+
+    PROFILE_SEGMENTS_SWITCH("memcpy device2host");
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceCFull, CElems * sizeof(double), cudaMemcpyDeviceToHost));
+
+
+    PROFILE_SEGMENTS_SWITCH("free");
+    PRINT_ON_ERROR(cudaFree(deviceAFull));
+    PRINT_ON_ERROR(cudaFree(deviceBFull));
+    PRINT_ON_ERROR(cudaFree(deviceCFull));
+
+    if constexpr(version == 0)
+    {
+        for(int i = 0; i < 2; i++)
+        {
+            PRINT_ON_ERROR(cudaFree(deviceA[i]));
+            PRINT_ON_ERROR(cudaFree(deviceB[i]));
+        }
+        for(int i = 0; i < 4; i++)
+            PRINT_ON_ERROR(cudaFree(deviceC[i]));
+    }
+
+    PROFILE_SEGMENT_FUNCTION_END();
+}
+
+
+/**
+ * flops16:
+ * 4*3*(2*M*K*N) (4 fp32 matmuls each of which is 3 fp16)
+ * 
+ * flops32:
+ * 4 *            (4 fp32 matmuls)
+ * (2*M*K + 2*K*N (splitting A and B)
+ * + N*M          (accumulating outside tensor cores)
+ * + 2*N*M)       (merging into C)
+ * 
+ * flops64:
+ * 2*M*K flops64 + 2*K*N flops64 (splitting A and B)
+ * + 5*N*M flops64               (merging with merge_cuda)
+ */
+flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, int M, int K, int N)
+{
+    matmul_Ootomo_double<0>(A, B, C, M, K, N);
+    flop_counts counts = {24L*M*K*N, 4L*(2L*M*K + 2L*K*N + 3L*N*M), 2L*M*K + 2L*K*N + 5L*N*M};
     return counts;
 }

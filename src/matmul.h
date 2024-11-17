@@ -21,6 +21,7 @@ flop_counts matmul_simpleOotomo_v0(float *A, float *B, float *C, int M, int K, i
 flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N);
 flop_counts matmul_Ootomo_v1(float *A, float *B, float *C, int M, int K, int N);
 flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, int M, int K, int N);
+flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, int M, int K, int N);
 
 flop_counts matmul_cuBLAS32(float *A, float *B, float *C, int M, int K, int N);
 flop_counts matmul_cuBLAS64(double *A, double *B, double *C, int M, int K, int N);
