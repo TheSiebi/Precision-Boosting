@@ -16,7 +16,7 @@
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
-const int FUNCTION_NAME_WIDTH = 38;
+const int FUNCTION_NAME_WIDTH = 40;
 
 matmul_variant<float> matmulVariants32[] =
 {
@@ -127,6 +127,9 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
     void *A16 = malloc(M * N * 2);
     void *dA16 = malloc(M * N * 2);
 
+    double absolute_residual_sum = 0.0;
+    double relative_residual_sum = 0.0;
+
     // Populate matrices with random values between -1 and 1
     gen_urand<double>(rng, A, M*N);
     
@@ -139,6 +142,9 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
         fail = true;
     }
 
+    absolute_residual_sum += abs_residual(A_merged, A, M * N);
+    relative_residual_sum += rel_residual(A_merged, A, M * N);
+
     // Populate matrices with random values between -1 and 1
     gen_urand<float>(rng, Af, M*N);
     
@@ -148,16 +154,21 @@ void testSplitCorrectness(struct split_variant *function, LCG* rng)
     if (!test_equality(Af_merged, Af, M*N)) {
         printf("FAILURE: merging the output of %s (float variant) is not identical to input!\n", function->name);
         fail = true;
-    } 
+    }
+    
+    absolute_residual_sum += abs_residual(Af_merged, Af, M * N);
+    relative_residual_sum += rel_residual(Af_merged, Af, M * N);
 
+    double avg_rel_residual = relative_residual_sum / 2.0;
+    double avg_abs_residual = absolute_residual_sum / 2.0;
+        
     if (!fail) {
         // Success!
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
-            << function->name;
-        for (int u = 0; u < FUNCTION_NAME_WIDTH - (int) strlen(function->name); ++u)
-            std::cout << " ";
-        std::cout << "Correct!      " << std::endl;
+            << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name;
+        // Print residual errors
+        std::cout << "Avg residual: \033[33m" << std::left << std::setw(11) << avg_rel_residual << "\033[0m (rel) \033[33m" << std::left << std::setw(11) << avg_abs_residual << "\033[0m (abs)" << std::endl;
     }
 
     free(A);
@@ -190,13 +201,15 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
     // srand(time(NULL));
     const size_t RUNS = 5;
     bool failed = false;
+    double relative_residual_sum = 0.0;
+    double absolute_residual_sum = 0.0;
     for (size_t run = 0; run < RUNS; run++) {
         uint64_t starting_seed = rng->state;
         // Randomize matrix dimensions
         size_t M, K, N;
-        M = 1 << next_int(rng, 6, 8);
-        K = 1 << next_int(rng, 6, 8);
-        N = 1 << next_int(rng, 6, 8);
+        M = 1 << next_int(rng, 7, 9);
+        K = 1 << next_int(rng, 7, 9);
+        N = 1 << next_int(rng, 7, 9);
 
         // Get matrices
         T *C = (T*) calloc(M * N,  sizeof(T));
@@ -207,6 +220,10 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 
         // Analyze result
         int wrong = test_matmul_correctness_full(C, C_reference, M, N);
+        double absolute_residual = abs_residual(C, C_reference, M * N);
+        double relative_residual = rel_residual(C, C_reference, M * N);
+        absolute_residual_sum += absolute_residual;
+        relative_residual_sum += relative_residual;
 
         if (wrong != -1) {
             failed = true;
@@ -220,9 +237,9 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 
             std::cout
                 << "\033[31m" << "[FAILURE]  " // Red text
-                << "\033[0m" << function->name
-                << std::endl; // Yellow text
-
+                << "\033[0m" << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name
+                << "\t" << "Residual: \033[33m" << relative_residual << "\033[0m (rel) \033[33m" << absolute_residual << "\033[0m (abs)" << std::endl;
+            
             std::cout << "\t" << "Seed: \033[33m" << std::hex << starting_seed << std::dec << "\033[0m\tM=\033[33m" << M << "\033[0m K=\033[33m" << K << "\033[0m N=\033[33m" << N << "\033[0m" << std::endl;
             std::cout << "\t" << "Wrong at: \033[33mRow " << row << "\033[0m, \033[33mCol " << col << "\033[0m" << std::endl;
             std::cout << "\t" << "Expected: \033[33m" << ref_sol << "\033[0m\tActual:   \033[33m" << wrong_val << "\033[0m" << std::endl;
@@ -238,9 +255,13 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 
     if (!failed) {
         // Success!
+        double avg_rel_residual = relative_residual_sum / (double) RUNS;
+        double avg_abs_residual = absolute_residual_sum / (double) RUNS;
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
-            << function->name << std::endl;
+            << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name;
+        // Print residual errors
+        std::cout << "Avg residual: \033[33m" << std::left << std::setw(11) << avg_rel_residual << "\033[0m (rel) \033[33m" << std::left << std::setw(11) << avg_abs_residual << "\033[0m (abs)" << std::endl;
     }
 }
 
@@ -270,20 +291,24 @@ int main(int argc, char *argv[])
 {
     LCG lcg = new_rng();
     LCG *rng = &lcg;
-    printf("\nInitialized RNG with Seed: %lx\n", rng->state);
+    uint64_t seed = rng->state;
+    printf("\nRunning tests with seed: %lx\n\n", rng->state);
 
     if (argc < 2)
     {
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {   
+            rng->state = seed;
             testMatmulCorrectness(&matmulVariants32[i], rng);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
+            rng->state = seed;
             testMatmulCorrectness(&matmulVariants64[i], rng);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
+            rng->state = seed;
             testSplitCorrectness(&splitVariants[i], rng);
         }
         

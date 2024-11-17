@@ -12,10 +12,10 @@ double frobenius_norm(T *A, int n) {
 }
 
 template<class T>
-double abs_residual(T *result, double *reference, int n) {
+double abs_residual(T *result, T *reference, int n) {
     double sqr_sum_err = 0.0;
     for(int i = 0; i < n; i++) {
-        double ref = reference[i];
+        double ref = (double) reference[i];
         double err = ref - ((double) result[i]);
         sqr_sum_err += err * err;
     }
@@ -23,11 +23,11 @@ double abs_residual(T *result, double *reference, int n) {
 }
 
 template<class T>
-double rel_residual(T *result, double *reference, int n) {
+double rel_residual(T *result, T *reference, int n) {
     double sqr_sum_err = 0.0;
     double sqr_sum_ref = 0.0;
     for(int i = 0; i < n; i++) {
-        double ref = reference[i];
+        double ref = (double) reference[i];
         double err = ref - ((double) result[i]);
         sqr_sum_err += err * err;
         sqr_sum_ref += ref * ref;
@@ -37,9 +37,9 @@ double rel_residual(T *result, double *reference, int n) {
 
 template double frobenius_norm<float>(float *result, int n);
 template double frobenius_norm<double>(double *result, int n);
-template double abs_residual<float>(float *result, double *reference, int n);
+template double abs_residual<float>(float *result, float *reference, int n);
 template double abs_residual<double>(double *result, double *reference, int n);
-template double rel_residual<float>(float *result, double *reference, int n);
+template double rel_residual<float>(float *result, float *reference, int n);
 template double rel_residual<double>(double *result, double *reference, int n);
 
 /// Returns the index of an element with error that is too great. If none is found, returns -1
@@ -113,6 +113,9 @@ template int test_matmul_correctness_full<double>(double *C, double *C_reference
 
 template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
 template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);
+
+template void referenceMatmul_full<float>(float *A, float *B, float *C, int M, int K, int N);
+template void referenceMatmul_full<double>(double *A, double *B, double *C, int M, int K, int N);
 
 template<class T>
 bool test_equality(T *A, T *B, size_t N) {

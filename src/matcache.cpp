@@ -4,6 +4,7 @@
 #include "matcache.h"
 #include "rand.h"
 #include "matmul.h"
+#include "precision.h"
 
 // Generate a filename based on matmul dimensions, generation schema, precision and operand (A, B, or C)
 std::string generateFilename(int M, int K, int N, char operand, const std::string& schema, const std::string& precision) {
@@ -118,12 +119,12 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schem
     }
 
     if constexpr (std::is_same<T, float>::value) {
-        matmul_reference32(reinterpret_cast<float*>(A), 
+        referenceMatmul_full(reinterpret_cast<float*>(A), 
                         reinterpret_cast<float*>(B), 
                         reinterpret_cast<float*>(C), 
                         M, K, N);
     } else {
-        matmul_reference64(reinterpret_cast<double*>(A), 
+        referenceMatmul_full(reinterpret_cast<double*>(A), 
                         reinterpret_cast<double*>(B), 
                         reinterpret_cast<double*>(C), 
                         M, K, N);
