@@ -46,8 +46,8 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Simple markidis with multiple fragments per warp",
     },
     {
-        .function = matmul_simpleOotomo_v0,
-        .name = "Simple Ootomo v0",
+        .function = matmul_basic_Ootomo_v0,
+        .name = "Basic Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
     },
     {
@@ -63,7 +63,7 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_Ootomo_v2,
         .name = "Ootomo v2",
-        .description = "Ootomo algorithm as described by Code3 in the paper with storing B in col major to shared memory",
+        .description = "Same as Ootomo_v1 but with better data reuse",
     },
     {
         .function = matmul_cuBLAS32,
@@ -86,14 +86,14 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_Ozaki_v0,
-        .name = "matmul_Ozaki_v0 (slow)",
+        .name = "matmul_Ozaki_v0",
         .description = "Ozaki FP64 using FP32 on CPU",
     },
     {
-        .function = matmul_Ozaki_v0_sort_then_accumulate,
-        .name = "matmul_Ozaki_v0_sort_then_accumulate",
-        .description = "Ozaki FP64 using FP32 on CPU",
-    },
+        .function = matmul_Ootomo_double_v0,
+        .name = "Ootomo double v0",
+        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
+    }
 };
 
 struct split_variant splitVariants[] =
@@ -312,21 +312,22 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i], rng);
         }
         
-        /*
+        /*        
         profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
+        profile(matmulVariants64[4], 0, 1, 4096, 4096, 4096);
 
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
-
+        
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
         
         profile(matmulVariants32[9], 0, 1, 8192, 8192, 8192);
-        */
+        */        
     }
     else
     {

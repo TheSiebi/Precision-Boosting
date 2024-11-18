@@ -1,5 +1,8 @@
+#include <cstdint>
+
 #include <algorithm>
 #include <vector>
+
 #include "../timer.h"
 #include "../profiler.h"
 
@@ -8,7 +11,7 @@ int ix(int row, int col, int rows, int cols)
     return col + row * cols;
 }
 
-// Turns a rows x cols matrix into a cols x rows matrix
+// Turns a [rows, cols] matrix into a [cols, rows] matrix
 template<class T>
 void transpose(const size_t rows, const size_t cols, T* data)
 {
@@ -127,7 +130,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
-std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b, int* nA_ptr, int* nB_ptr)
+std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b, int64_t* nA_ptr, int64_t* nB_ptr)
 {
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
@@ -159,13 +162,18 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
 }
 
-// WARNING: data in a, b, will be modified!
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
-{
-    int nA, nB;
+{   
+    // Ozaki splitting modifies input matrices. Therefore, copies must be made.
+    std::vector<double> a_copy(a, a + m * n);
+    std::vector<double> b_copy(b, b + n * p);
+
+    // Splitting configuration (nA, nB) influences flop-count, and must be retrieved.
+    int64_t nA, nB;
+
     PROFILE_FUNCTION_START();
-    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
+    const auto unevaluated_sum = ozaki_mul(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
     for (int ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
@@ -173,34 +181,6 @@ flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p
 
     PROFILE_FUNCTION_END();
 
-    flop_counts counts = 
-    {
-        0L,
-        8L + (4L*m+3L*m*n)*nA + (4L*n+3L*n*p)*nB + 2L*nA*nB*m*n*p,
-        (2L*m*n+m)*nA + (2L*n*p+n)*nB + m*p*nA*nB
-    };
-    return counts;
-}
-
-flop_counts matmul_Ozaki_v0_sort_then_accumulate(double *a, double *b, double *c, int m, int n, int p)
-{
-    int nA, nB;
-    PROFILE_FUNCTION_START();
-    const auto unevaluated_sum = ozaki_mul(m, n, p, a, b, &nA, &nB);
-    memset(c, 0, m * p * sizeof(double));
-    for (int ij = 0; ij < m * p; ++ij)
-    {
-        std::vector<float> summands(unevaluated_sum.size());
-        auto it = summands.begin();
-        for (const auto& matrix: unevaluated_sum)
-            *(it++) = matrix[ij];
-        std::sort(summands.begin(), summands.end());
-        for (const auto s: summands)
-            c[ij] += s;
-    }
-
-    PROFILE_FUNCTION_END();
-    
     flop_counts counts = 
     {
         0L,
