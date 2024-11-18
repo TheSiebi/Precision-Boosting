@@ -45,8 +45,8 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Simple markidis with multiple fragments per warp",
     },
     {
-        .function = matmul_simpleOotomo_v0,
-        .name = "Simple Ootomo v0",
+        .function = matmul_basic_Ootomo_v0,
+        .name = "Basic Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
     },
     {
