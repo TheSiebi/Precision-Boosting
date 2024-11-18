@@ -85,12 +85,7 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_Ozaki_v0,
-        .name = "matmul_Ozaki_v0 (slow)",
-        .description = "Ozaki FP64 using FP32 on CPU",
-    },
-    {
-        .function = matmul_Ozaki_v0_sort_then_accumulate,
-        .name = "matmul_Ozaki_v0_sort_then_accumulate",
+        .name = "matmul_Ozaki_v0",
         .description = "Ozaki FP64 using FP32 on CPU",
     },
     {
