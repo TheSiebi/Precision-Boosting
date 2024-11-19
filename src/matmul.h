@@ -14,11 +14,8 @@ flop_counts matmul_v0(double *A, double *B, double *C, int M, int K, int N);
 // flop_counts matmul_v3(double *A, double *B, double *C, int M, int K, int N);
 
 flop_counts matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N);
-flop_counts matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N);
-flop_counts matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N);
-flop_counts matmul_simpleMarkidis_v2(float *A, float *B, float *C, int M, int K, int N);
-flop_counts matmul_simpleMarkidis_v3(float *A, float *B, float *C, int M, int K, int N);
-flop_counts matmul_simpleMarkidis_v4(float *A, float *B, float *C, int M, int K, int N);
+template<int version>
+flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N); 
 
 flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N);
 

@@ -27,7 +27,7 @@ __global__ void split_cuda(float *A, half *A0, half *A1, int N)
 }
 
 template<int version>
-void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N) 
+flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -104,8 +104,6 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
     PRINT_ON_ERROR(cudaFree(deviceBFull));
 
     PROFILE_SEGMENT_FUNCTION_END();
-}
-
 /**
  * Flop counts of markidis should be very similar to Ootomo, with the difference that we
  * only require one flop32 for splitting an element and similarly for merging.
@@ -118,38 +116,12 @@ void matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N)
  * M*K + K*N (splitting A and B)
  * + 3*N*M (merging into C)
  */
-flop_counts matmul_simpleMarkidis_v0(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_simpleMarkidis<0>(A, B, C, M, K, N);
     flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
     return counts;
 }
 
-flop_counts matmul_simpleMarkidis_v1(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_simpleMarkidis<1>(A, B, C, M, K, N);
-    flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
-    return counts;
-}
-
-flop_counts matmul_simpleMarkidis_v2(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_simpleMarkidis<2>(A, B, C, M, K, N);
-    flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
-    return counts;
-}
-
-flop_counts matmul_simpleMarkidis_v3(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_simpleMarkidis<3>(A, B, C, M, K, N);
-    flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
-    return counts;
-}
-
-flop_counts matmul_simpleMarkidis_v4(float *A, float *B, float *C, int M, int K, int N)
-{
-    matmul_simpleMarkidis<4>(A, B, C, M, K, N);
-    flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
-    return counts;
-}
-
+template flop_counts matmul_simpleMarkidis<0>(float *A, float *B, float *C, int M, int K, int N);
+template flop_counts matmul_simpleMarkidis<1>(float *A, float *B, float *C, int M, int K, int N);
+template flop_counts matmul_simpleMarkidis<2>(float *A, float *B, float *C, int M, int K, int N);
+template flop_counts matmul_simpleMarkidis<3>(float *A, float *B, float *C, int M, int K, int N);
+template flop_counts matmul_simpleMarkidis<4>(float *A, float *B, float *C, int M, int K, int N);

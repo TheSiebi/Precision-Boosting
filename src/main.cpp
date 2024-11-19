@@ -21,27 +21,27 @@ const int FUNCTION_NAME_WIDTH = 40;
 matmul_variant<float> matmulVariants32[] =
 {
     {
-        .function = matmul_simpleMarkidis_v0,
+        .function = matmul_simpleMarkidis<0>,
         .name = "Simple Markidis v0",
         .description = "Simple markidis with simple cuda matmul",
     },
     {
-        .function = matmul_simpleMarkidis_v1,
+        .function = matmul_simpleMarkidis<1>,
         .name = "Simple Markidis v1",
         .description = "Simple markidis with simple tensor matmul",
     },
     {
-        .function = matmul_simpleMarkidis_v2,
+        .function = matmul_simpleMarkidis<2>,
         .name = "Simple Markidis v2",
         .description = "Simple markidis with multiple warps per block",
     },
     {
-        .function = matmul_simpleMarkidis_v3,
+        .function = matmul_simpleMarkidis<3>,
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
     },
     {
-        .function = matmul_simpleMarkidis_v4,
+        .function = matmul_simpleMarkidis<4>,
         .name = "Simple Markidis v4",
         .description = "Simple markidis with multiple fragments per warp",
     },
