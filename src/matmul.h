@@ -13,7 +13,9 @@ flop_counts matmul_v0(double *A, double *B, double *C, int M, int K, int N);
 // flop_counts matmul_v2(double *A, double *B, double *C, int M, int K, int N);
 // flop_counts matmul_v3(double *A, double *B, double *C, int M, int K, int N);
 
-flop_counts matmul_cuda_v0(double *A, double *B, double *C, int M, int K, int N);
+template<typename InpuType, typename OutputType, int version>
+flop_counts matmul_cuda(InpuType *A, InpuType *B, OutputType *C, int M, int K, int N);
+
 template<int version>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N); 
 

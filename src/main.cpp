@@ -75,8 +75,28 @@ matmul_variant<float> matmulVariants32[] =
 matmul_variant<double> matmulVariants64[] =
 {
     {
-        .function = matmul_cuda_v0,
-        .name = "matmul_cuda_v0",
+        .function = matmul_cuda<double, double, 0>,
+        .name = "matmul_cuda v0",
+        .description = "straightforward triple for loop implementation running on the GPU",
+    },
+    {
+        .function = matmul_cuda<double, double, 1>,
+        .name = "matmul_cuda v1",
+        .description = "straightforward triple for loop implementation running on the GPU",
+    },
+    {
+        .function = matmul_cuda<double, double, 2>,
+        .name = "matmul_cuda v2",
+        .description = "straightforward triple for loop implementation running on the GPU",
+    },
+    {
+        .function = matmul_cuda<double, double, 3>,
+        .name = "matmul_cuda v3",
+        .description = "straightforward triple for loop implementation running on the GPU",
+    },
+    {
+        .function = matmul_cuda<double, double, 4>,
+        .name = "matmul_cuda v4",
         .description = "straightforward triple for loop implementation running on the GPU",
     },
     {
@@ -86,7 +106,7 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_Ozaki_v0,
-        .name = "matmul_Ozaki_v0",
+        .name = "matmul_Ozaki v0",
         .description = "Ozaki FP64 using FP32 on CPU",
     },
     {
@@ -312,9 +332,13 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i], rng);
         }
         
+        profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[2], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[3], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[4], 0, 1, 8192, 8192, 8192);
+        profile(matmulVariants64[5], 0, 1, 8192, 8192, 8192);
         /*        
-        profile(matmulVariants64[0], 0, 1, 4096, 4096, 4096);
-        profile(matmulVariants64[1], 0, 1, 4096, 4096, 4096);
         profile(matmulVariants64[4], 0, 1, 4096, 4096, 4096);
 
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
