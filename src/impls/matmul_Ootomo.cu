@@ -584,8 +584,8 @@ __global__ void matmul_v2_kernel(const float *A, const float *B, float *C, int M
             // calculate mmul
             for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
             {
-                wmma::load_matrix_sync(aFrag, As + warpOffsetA + tileRow * WMMA_K * BK + chunk * WMMA_K, BK);
-                wmma::load_matrix_sync(daFrag, dAs + warpOffsetA + tileRow * WMMA_K * BK + chunk * WMMA_K, BK);
+                wmma::load_matrix_sync(aFrag, As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+                wmma::load_matrix_sync(daFrag, dAs + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
                 for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
                 {
                     wmma::fill_fragment(tmpFrag, 0.0f);
