@@ -293,14 +293,18 @@ __device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int in
 {
     loadType tmp = *(reinterpret_cast<const loadType *>(A + (innerRow + rowOffset) * ACols + innerCol * 4));
     struct split tmp_split = split_Ootomo(tmp);
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.x.x;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.x.y;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.y.x;
-    As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.y.y;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.dx.x;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.dx.y;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.dy.x;
-    dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.dy.y;
+    reinterpret_cast<double *>(&As[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
+        reinterpret_cast<double *>(&tmp_split)[0];
+    reinterpret_cast<double *>(&dAs[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
+        reinterpret_cast<double *>(&tmp_split.dx)[0];
+    // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.x.x;
+    // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.x.y;
+    // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.y.x;
+    // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.y.y;
+    // dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.dx.x;
+    // dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.dx.y;
+    // dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.dy.x;
+    // dAs[(innerRow + rowOffset) * AsCols + innerCol * 4 + 3] = tmp_split.dy.y;
 
     // assert(fabs(((float)tmp_split.x.x + (float)tmp_split.dx.x / 2048.0f) - tmp.x) < 0.001f);
     // assert(fabs(((float)tmp_split.x.y + (float)tmp_split.dx.y / 2048.0f) - tmp.y) < 0.001f);
