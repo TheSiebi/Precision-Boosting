@@ -299,27 +299,27 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K
 
 int main(int argc, char *argv[])
 {
-    LCG lcg = new_rng();
-    LCG *rng = &lcg;
-    uint64_t seed = rng->state;
-    printf("\nRunning tests with seed: %lx\n\n", rng->state);
+    //LCG rng = new_rng();
+    LCG rng = rng_seeded(0xC0FEE);
+    uint64_t seed = rng.state;
+    printf("\nRunning tests with seed: %lx\n\n", rng.state);
 
     if (argc < 2)
     {
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {   
-            rng->state = seed;
-            testMatmulCorrectness(&matmulVariants32[i], rng);
+            rng.state = seed;
+            testMatmulCorrectness(&matmulVariants32[i], &rng);
         }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
-            rng->state = seed;
-            testMatmulCorrectness(&matmulVariants64[i], rng);
+            rng.state = seed;
+            testMatmulCorrectness(&matmulVariants64[i], &rng);
         }
         for(size_t i = 0; i < ARRAY_COUNT(splitVariants); i++)
         {
-            rng->state = seed;
-            testSplitCorrectness(&splitVariants[i], rng);
+            rng.state = seed;
+            testSplitCorrectness(&splitVariants[i], &rng);
         }
         
         /*        
