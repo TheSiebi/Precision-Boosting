@@ -18,6 +18,7 @@ flop_counts matmul_cuda(InpuType *A, InpuType *B, OutputType *C, int M, int K, i
 
 template<int version>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N); 
+flop_counts matmul_markidis(float *A, float *B, float *C, int M, int K, int N);
 
 flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N);
 

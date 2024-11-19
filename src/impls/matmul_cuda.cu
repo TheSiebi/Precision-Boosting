@@ -185,17 +185,15 @@ __global__ void matmul_kernel_v4(InputType *A, InputType *B, OutputType *C, int 
 
     const int warpNOffset = threadIdx.y * (WarpSizeN * FragSizeN);
     const int warpMOffset = threadIdx.z * (WarpSizeM * FragSizeM);
-    const int warpIndex = threadIdx.y + blockDim.y * threadIdx.z;
+    const int threadIndex = threadIdx.x + blockDim.x * (threadIdx.y + blockDim.y * threadIdx.z);
 
-    constexpr int LoadAWarpsPerRow = KStep / WARP_SIZE;
-    const int loadARowStep = (blockDim.y * blockDim.z) / LoadAWarpsPerRow;
-    const int loadAWarpMOffset = warpIndex / LoadAWarpsPerRow;
-    const int loadAThreadOffset = (warpIndex % LoadAWarpsPerRow) * WARP_SIZE + threadIdx.x;
+    const int loadARowStep = (blockDim.x * blockDim.y * blockDim.z) / KStep;
+    const int loadAMOffset = threadIndex / KStep;
+    const int loadAKOffset = threadIndex % KStep;
 
-    constexpr int LoadBWarpsPerRow = BlockSizeN / WARP_SIZE;
-    const int loadBRowStep = (blockDim.y * blockDim.z) / LoadBWarpsPerRow;
-    const int loadBWarpKOffset = warpIndex / LoadBWarpsPerRow;
-    const int loadBThreadOffset = (warpIndex % LoadBWarpsPerRow) * WARP_SIZE + threadIdx.x;
+    const int loadBRowStep = (blockDim.x * blockDim.y * blockDim.z) / BlockSizeN;
+    const int loadBKOffset = threadIndex / BlockSizeN;
+    const int loadBNOffset = threadIndex % BlockSizeN;
 
     wmma::fragment<wmma::matrix_a, FragSizeM, FragSizeN, FragSizeK, InputType, wmma::row_major> aFrag[WarpSizeM];
     wmma::fragment<wmma::matrix_b, FragSizeM, FragSizeN, FragSizeK, InputType, wmma::row_major> bFrag[WarpSizeN];
@@ -211,13 +209,13 @@ __global__ void matmul_kernel_v4(InputType *A, InputType *B, OutputType *C, int 
         const int loadBBase = scalar_blockBaseB + kBase * N;
         for(int mOffset = 0; mOffset < BlockSizeM; mOffset += loadARowStep)
         {
-            int m = mOffset + loadAWarpMOffset;
-            SharedA[m][loadAThreadOffset] = A[loadABase + m * K + loadAThreadOffset];
+            int m = mOffset + loadAMOffset;
+            SharedA[m][loadAKOffset] = A[loadABase + m * K + loadAKOffset];
         }
         for(int kOffset = 0; kOffset < KStep; kOffset += loadBRowStep)
         {
-            int k = kOffset + loadBWarpKOffset;
-            SharedB[k][loadBThreadOffset] = B[loadBBase + k * N + loadBThreadOffset];
+            int k = kOffset + loadBKOffset;
+            SharedB[k][loadBNOffset] = B[loadBBase + k * N + loadBNOffset];
         }
 
         __syncthreads();
@@ -255,7 +253,7 @@ void matmul(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
 {
     const int BLOCK_SIZE_M = std::is_same<InputType, half>::value ? 64 : 32;
     const int BLOCK_SIZE_N = std::is_same<InputType, half>::value ? 64 : 32;
-    const int K_STEP       = 32;
+    const int K_STEP       = 16;
     const int WARP_SIZE_M  = 2;
     const int WARP_SIZE_N  = 2;
     const int FRAG_SIZE_M  = std::is_same<InputType, half>::value ? 16 : 8;
