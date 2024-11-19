@@ -41,11 +41,6 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Simple markidis with shared memory",
     },
     {
-        .function = matmul_simpleMarkidis<4>,
-        .name = "Simple Markidis v4",
-        .description = "Simple markidis with multiple fragments per warp",
-    },
-    {
         .function = matmul_basic_Ootomo_v0,
         .name = "Basic Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
@@ -92,11 +87,6 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_cuda<double, double, 3>,
         .name = "matmul_cuda v3",
-        .description = "straightforward triple for loop implementation running on the GPU",
-    },
-    {
-        .function = matmul_cuda<double, double, 4>,
-        .name = "matmul_cuda v4",
         .description = "straightforward triple for loop implementation running on the GPU",
     },
     {
@@ -346,7 +336,6 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
         /*
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
