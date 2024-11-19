@@ -14,7 +14,8 @@
 
 #include "matmul_cuda.h"
 
-__global__ void split_cuda(float *A, half *A0, half *A1, int N)
+static __global__ 
+void split_cuda(float *A, half *A0, half *A1, int N)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
@@ -24,6 +25,14 @@ __global__ void split_cuda(float *A, half *A0, half *A1, int N)
         A0[i] = mainPart;
         A1[i] = (half)(value - (float)mainPart);
     }
+}
+
+static __global__ 
+void merge_cuda(float *C0, float *C1, float *C2, float *C3, float *C, int N)
+{
+    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    if(i < N)
+        C[i] = C0[i] + (C1[i] + (C2[i] + C3[i]));
 }
 
 template<int version>
@@ -39,15 +48,11 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     size_t BSize = K * N * sizeof(half);
     size_t CSize = M * N * sizeof(float);
     
-    float *hostC[4];
-    for(int i = 0; i < 4; i++)
-        hostC[i] = (float*)malloc(CSize);
-
-
     PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
     half *deviceA[2], *deviceB[2];
     float *deviceC[4];
+    float *deviceCMerged;
     float *deviceAFull, *deviceBFull;
     for(int i = 0; i < 2; i++)
     {
@@ -57,6 +62,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     }
     for(int i = 0; i < 4; i++)
         PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CSize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceCMerged, CSize));
     PRINT_ON_ERROR(cudaMalloc(&deviceAFull, M*K*sizeof(float)));
     PRINT_ON_ERROR(cudaMalloc(&deviceBFull, K*N*sizeof(float)));
 
@@ -81,15 +87,14 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
-    PROFILE_SEGMENTS_SWITCH("memcpy device2host");
-
-    for(int i = 0; i < 4; i++)
-        PRINT_ON_ERROR(cudaMemcpy(hostC[i], deviceC[i], CSize, cudaMemcpyDeviceToHost));
-
     PROFILE_SEGMENTS_SWITCH("merge");
+    merge_cuda<<<DivRoundUp(M*N, 256), 256>>>
+              (deviceC[0], deviceC[1], deviceC[2], deviceC[3], deviceCMerged, M*N);
+    PRINT_ON_ERROR(cudaGetLastError());
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
 
-    for(int i = 0; i < M * N; i++)
-        C[i] = hostC[0][i] + hostC[1][i] + hostC[2][i] + hostC[3][i];
+    PROFILE_SEGMENTS_SWITCH("memcpy device2host");
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSize, cudaMemcpyDeviceToHost));
 
     PROFILE_SEGMENTS_SWITCH("free");
 
@@ -100,6 +105,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     }
     for(int i = 0; i < 4; i++)
         PRINT_ON_ERROR(cudaFree(deviceC[i]));
+    PRINT_ON_ERROR(cudaFree(deviceCMerged));
     PRINT_ON_ERROR(cudaFree(deviceAFull));
     PRINT_ON_ERROR(cudaFree(deviceBFull));
 

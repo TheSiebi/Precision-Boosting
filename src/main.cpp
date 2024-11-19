@@ -332,20 +332,22 @@ int main(int argc, char *argv[])
             testSplitCorrectness(&splitVariants[i], rng);
         }
         
+        /*        
         profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[4], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[5], 0, 1, 8192, 8192, 8192);
-        /*        
         profile(matmulVariants64[4], 0, 1, 4096, 4096, 4096);
+        */
 
+        
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
-        
+        /*
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
