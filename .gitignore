@@ -4,6 +4,7 @@ timings/*
 plotting_venv
 .vscode/*
 matcache/*
+machine.template
 
 # Prerequisites
 *.d
