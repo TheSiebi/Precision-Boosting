@@ -12,10 +12,10 @@ CC=gcc
 CPP=g++
 
 OBJ_FILES=build/profiler.o build/timer.o build/rand.o build/precision.o build/cJSON.o build/matcache.o
-OBJ_FILES+=build/matmul_simpleMarkidis_v0.o
+OBJ_FILES+=build/matmul_simpleMarkidis.o
 OBJ_FILES+=build/matmul_basic_Ootomo_v0.o
 OBJ_FILES+=build/matmul_Ootomo.o
-OBJ_FILES+=build/matmul_cuda_v0.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o
+OBJ_FILES+=build/matmul_cuda.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o
 OBJ_FILES+=build/matmul_cuBLAS.o
 OBJ_FILES+=build/matmul_Ozaki_v0.o
 
@@ -52,11 +52,11 @@ build/matcache.o: src/matcache.cpp
 build/matmul_reference.o: src/impls/matmul_reference.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_reference.cu -o $@
 
-build/matmul_cuda_v0.o: src/impls/matmul_cuda_v0.cu
-	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda_v0.cu -o $@
+build/matmul_cuda.o: src/impls/matmul_cuda.cu
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuda.cu -o $@
 
-build/matmul_simpleMarkidis_v0.o: src/impls/matmul_simpleMarkidis_v0.cu
-	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleMarkidis_v0.cu -o $@
+build/matmul_simpleMarkidis.o: src/impls/matmul_simpleMarkidis.cu
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_simpleMarkidis.cu -o $@
 
 build/matmul_basic_Ootomo_v0.o: src/impls/matmul_basic_Ootomo_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_basic_Ootomo_v0.cu -o $@
