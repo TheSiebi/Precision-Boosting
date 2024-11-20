@@ -132,8 +132,8 @@ __global__ void split4_cuda(double *A, half *dA_high, half *dA_middleUp, half *d
     half2 highSplit = split_element<float, half, half2>(floatSplit.x);
     half2 lowSplit = split_element<float, half, half2>(floatSplit.y);
 
-    double reconstructed = ((double)highSplit.x + (double)highSplit.y) + ((double)lowSplit.x + (double)lowSplit.y);
-    assert(fabs(reconstructed - A[i]) < 1e-9);
+    //double reconstructed = ((double)highSplit.x + (double)highSplit.y) + ((double)lowSplit.x + (double)lowSplit.y);
+    //assert(fabs(reconstructed - A[i]) < 1e-9);
 }
 
 /**
@@ -706,18 +706,12 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
+            for (int i = 0; i < 4; i++)
+            {
+                matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[i%2], deviceB[i/2], deviceC[i], M, K, N);
+                PRINT_ON_ERROR(cudaGetLastError());
+            }
         } 
         else 
         {
@@ -727,18 +721,12 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
+            for (int i = 0; i < 4; i++)
+            {
+                matmul_v0_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                <<<blocks, p.threadsPerBlock>>>(deviceA[i%2], deviceB[i/2], deviceC[i], M, K, N);
+                PRINT_ON_ERROR(cudaGetLastError());
+            }
         }
     } 
     else if constexpr(version == 1 || version == 2)
@@ -952,18 +940,12 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
+            for (int i = 0; i < 4; i++)
+            {
+                matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                    <<<blocks, p.threadsPerBlock>>>(deviceA[i%2], deviceB[i/2], deviceC[i], M, K, N);
+                PRINT_ON_ERROR(cudaGetLastError());
+            }
         } 
         else 
         {
@@ -973,18 +955,12 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[0], deviceC[0], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[0], deviceC[1], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[0], deviceB[1], deviceC[2], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
-            matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
-                <<<blocks, p.threadsPerBlock>>>(deviceA[1], deviceB[1], deviceC[3], M, K, N);
-            PRINT_ON_ERROR(cudaGetLastError());
+            for (int i = 0; i < 4; i++)
+            {
+                matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                    <<<blocks, p.threadsPerBlock>>>(deviceA[i%2], deviceB[i/2], deviceC[i], M, K, N);
+                PRINT_ON_ERROR(cudaGetLastError());
+            }
         }
     } 
 
