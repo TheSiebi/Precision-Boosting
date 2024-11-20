@@ -293,10 +293,10 @@ __device__ __forceinline__ void loadAndSplit(const matType *A, int ACols, int in
 {
     loadType tmp = *(reinterpret_cast<const loadType *>(A + (innerRow + rowOffset) * ACols + innerCol * 4));
     struct split tmp_split = split_Ootomo(tmp);
-    reinterpret_cast<double *>(&As[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
-        reinterpret_cast<double *>(&tmp_split)[0];
-    reinterpret_cast<double *>(&dAs[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
-        reinterpret_cast<double *>(&tmp_split.dx)[0];
+    reinterpret_cast<float2 *>(&As[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
+        reinterpret_cast<float2 *>(&tmp_split)[0];
+    reinterpret_cast<float2 *>(&dAs[(innerRow + rowOffset) * AsCols + innerCol * 4])[0] = 
+        reinterpret_cast<float2 *>(&tmp_split.dx)[0];
     // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 0] = tmp_split.x.x;
     // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 1] = tmp_split.x.y;
     // As[(innerRow + rowOffset) * AsCols + innerCol * 4 + 2] = tmp_split.y.x;
