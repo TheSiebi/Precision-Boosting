@@ -9,6 +9,7 @@
 #include "machine.h"
 #include "../lib/cjson/cJSON.h"
 
+
 #define NS_PER_SECOND 1e9
 
 cJSON* measurement_configuration_to_json(struct measurementConfiguration *conf) {
@@ -90,27 +91,22 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func)
+flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
     T* A = (T *) malloc(M * K * sizeof(T));
+    gen_urand<T>(&rng, A, M * K);
     T* B = (T *) malloc(K * N * sizeof(T));
+    gen_urand<T>(&rng, B, K * N);
     T* C = (T *) malloc(M * N * sizeof(T));
     flop_counts counts;
 
+
     for(int i = 0; i < iterations; i++)
     {
-        // Populate matrices with random values between 0 and 1
-        for (int j = 0; j < M*K; j++) {
-            A[j] = (T) (rand() / (double) RAND_MAX);
-        }
-        for (int j = 0; j < K*N; j++) {
-            B[j] = (T) (rand() / (double) RAND_MAX);
-        }
-
         struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         counts = func(A, B, C, M, K, N);
@@ -126,18 +122,18 @@ flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul
     return counts;
 }
 
-template flop_counts timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func);
-template flop_counts timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func);
+template flop_counts timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func, LCG rng);
+template flop_counts timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func, LCG rng);
 
 template<class T>
-void timeFunction(matmul_variant<T> *function, char *path) {
+void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Time %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 8;
+    int powerOfMaxSize = 12;
     int powerOfMinSize = 4;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
-    const int iterationsPerConfig = 5;
+    const int iterationsPerConfig = 10;
 
     struct measurementConfiguration runConfig = {
         .cpuModel = CPU,
@@ -150,7 +146,7 @@ void timeFunction(matmul_variant<T> *function, char *path) {
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
-        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function);
+        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
         struct run run = {
             .M = n,
             .N = n,
@@ -170,8 +166,8 @@ void timeFunction(matmul_variant<T> *function, char *path) {
     write_measurement_to_file(&measurement, path, function->name, numSizes, iterationsPerConfig);
 }
 
-template void timeFunction<float>(matmul_variant<float> *function, char *path);
-template void timeFunction<double>(matmul_variant<double> *function, char *path);
+template void timeFunction<float>(matmul_variant<float> *function, char *path, LCG rng);
+template void timeFunction<double>(matmul_variant<double> *function, char *path, LCG rng);
 
 flop_counts matmul_flopcount_32(int M, int K, int N) {
     flop_counts counts;

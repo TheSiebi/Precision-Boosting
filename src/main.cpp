@@ -309,13 +309,13 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K
 
 int main(int argc, char *argv[])
 {
-    //LCG rng = new_rng();
-    LCG rng = rng_seeded(0xC0FEE);
-    uint64_t seed = rng.state;
-    printf("\nRunning tests with seed: %lx\n\n", rng.state);
 
     if (argc < 2)
     {
+        //LCG rng = new_rng();
+        LCG rng = rng_seeded(0xC0FEE);
+        uint64_t seed = rng.state;
+        printf("\nRunning tests with seed: %lx\n\n", rng.state);
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
         {   
             rng.state = seed;
@@ -358,9 +358,22 @@ int main(int argc, char *argv[])
     }
     else
     {
-        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
+        LCG rng = new_rng();
+        uint64_t seed = rng.state;
+
+        std::vector<int> timeIndices64 = {};
+        for(const int value : timeIndices64)
         {
-            timeFunction(&matmulVariants64[i], argv[2]);
+            timeFunction(&matmulVariants64[value], argv[2], rng);
+            rng.state = seed;
+        }
+        
+        
+        std::vector<int> timeIndices32 = {7, 8, 9};
+        for(const int value : timeIndices32)
+        {
+            timeFunction(&matmulVariants32[value], argv[2], rng);
+            rng.state = seed;
         }
     }
     return 0;

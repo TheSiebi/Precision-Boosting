@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <stdbool.h>
-
+#include "rand.h"
 
 struct flop_counts
 {
@@ -73,10 +73,10 @@ struct measurement
 };
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func);
+flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func, LCG rng);
 
 template<class T>
-void timeFunction(struct matmul_variant<T> *function, char *path);
+void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);
 
 flop_counts matmul_flopcount_32(int M, int K, int N);
 flop_counts matmul_flopcount_64(int M, int K, int N);
