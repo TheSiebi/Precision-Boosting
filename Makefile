@@ -1,11 +1,14 @@
 .PHONY: prepareBuild build clean run
 
+SM_BASE_VERSION=$(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1)
+SM_VERSION=$(shell echo "$(SM_BASE_VERSION) * 1000 / 10" | bc)
+
 USER_FLAGS=
-BASE_FLAGS=$(USER_FLAGS) -Wall -Wextra -Wpedantic -g -ffp-contract=off
+BASE_FLAGS=$(USER_FLAGS) -Wall -Wextra -Wpedantic -g -ffp-contract=off -DSM_VERSION=$(SM_VERSION)
 CPP_FLAGS=$(BASE_FLAGS) -std=gnu++2a -Wno-missing-field-initializers
 OPT_FLAGS=$(CPP_FLAGS) -O3
 DEBUG_FLAGS=$(CPP_FLAGS) -O0 -fsanitize=address
-CUDA_FLAGS= -g -arch=native
+CUDA_FLAGS= -g -arch=native -DSM_VERSION=$(SM_VERSION)
 CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G -Xptxas -v
 
 CC=gcc
@@ -28,6 +31,7 @@ build: prepareBuild $(OBJ_FILES)
 	$(CPP) $(OPT_FLAGS) src/main.cpp $(OBJ_FILES) -o build/main -lm -lcudart -lcublas
 
 prepareBuild:
+	$(info SM_VERSION: $(SM_VERSION))
 	mkdir -p build
 	cp -n -T machine.template src/machine.h
 
