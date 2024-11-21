@@ -81,6 +81,22 @@ matmul_variant<float> matmulVariants32[] =
 matmul_variant<double> matmulVariants64[] =
 {
     {
+        .function = matmul_cuBLAS64,
+        .name = "matmul_cuBLAS",
+        .description = "cuBLAS",
+    },
+    {
+        .function = matmul_Ozaki_v0,
+        .name = "matmul_Ozaki v0",
+        .description = "Ozaki FP64 using FP32 on CPU",
+    },
+    {
+        .function = matmul_Ootomo_double_v0,
+        .name = "Ootomo double v0",
+        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
+    },
+#if CUDART_VERSION >= 8000
+    {
         .function = matmul_cuda<double, double, 0>,
         .name = "matmul_cuda v0",
         .description = "straightforward triple for loop implementation running on the GPU",
@@ -99,22 +115,8 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuda<double, double, 3>,
         .name = "matmul_cuda v3",
         .description = "straightforward triple for loop implementation running on the GPU",
-    },
-    {
-        .function = matmul_cuBLAS64,
-        .name = "matmul_cuBLAS",
-        .description = "cuBLAS",
-    },
-    {
-        .function = matmul_Ozaki_v0,
-        .name = "matmul_Ozaki v0",
-        .description = "Ozaki FP64 using FP32 on CPU",
-    },
-    {
-        .function = matmul_Ootomo_double_v0,
-        .name = "Ootomo double v0",
-        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
     }
+#endif
 };
 
 struct split_variant splitVariants[] =
@@ -370,7 +372,7 @@ int main(int argc, char *argv[])
         }
         
         
-        std::vector<int> timeIndices32 = {0, 1, 2, 10};
+        std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
         for(const int value : timeIndices32)
         {
             timeFunction(&matmulVariants32[value], argv[2], rng);

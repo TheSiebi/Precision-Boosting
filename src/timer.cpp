@@ -175,8 +175,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Time %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 9;
-    int powerOfMinSize = 4;
+    int powerOfMaxSize = 12;
+    int powerOfMinSize = 8;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int iterationsPerConfig = 10;
 
