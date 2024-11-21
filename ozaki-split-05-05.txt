@@ -1,0 +1,29 @@
+Number of split matrices after splitting an input matrix containing numbers between -0.5 and 0.5
+
+Size 4 = 2x2 -> 3 matrices
+Size 8 = 2x4 -> 3 matrices
+Size 16 = 4x4 -> 3 matrices
+Size 32 = 8x4 -> 3 matrices
+Size 64 = 8x8 -> 3 matrices
+Size 128 = 8x16 -> 3 matrices
+Size 256 = 16x16 -> 4 matrices
+Size 512 = 32x16 -> 4 matrices
+Size 1024 = 32x32 -> 4 matrices
+Size 2048 = 32x64 -> 4 matrices
+Size 4096 = 64x64 -> 4 matrices
+Size 8192 = 128x64 -> 5 matrices
+Size 16384 = 128x128 -> 5 matrices
+Size 32768 = 128x256 -> 5 matrices
+Size 65536 = 256x256 -> 5 matrices
+Size 131072 = 512x256 -> 5 matrices
+Size 262144 = 512x512 -> 6 matrices
+Size 524288 = 512x1024 -> 7 matrices
+Size 1048576 = 1024x1024 -> 6 matrices
+Size 2097152 = 2048x1024 -> 7 matrices
+Size 4194304 = 2048x2048 -> 8 matrices
+Size 8388608 = 2048x4096 -> 8 matrices
+Size 16777216 = 4096x4096 -> 9 matrices
+Size 33554432 = 8192x4096 -> 9 matrices
+Size 67108864 = 8192x8192 -> 10 matrices
+Size 134217728 = 8192x16384 -> 10 matrices
+Size 268435456 = 16384x16384 -> 10 matrices
