@@ -8,6 +8,7 @@
 #include <math.h>
 #include "machine.h"
 #include "../lib/cjson/cJSON.h"
+#include "precision.h"
 
 
 #define NS_PER_SECOND 1e9
@@ -39,6 +40,9 @@ cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
 
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterationsPerConfig);
     cJSON_AddItemToObject(json, "timings", timings_array);
+    
+    cJSON *residuals_array = cJSON_CreateDoubleArray(r->residuals, iterationsPerConfig);
+    cJSON_AddItemToObject(json, "residuals", residuals_array);
 
     return json;
 }
@@ -104,7 +108,6 @@ flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul
     T* C = (T *) malloc(M * N * sizeof(T));
     flop_counts counts;
 
-
     for(int i = 0; i < iterations; i++)
     {
         struct timespec start, end, delta;
@@ -126,6 +129,39 @@ template flop_counts timeRun<float>(double *timings, int iterations, int M, int 
 template flop_counts timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func, LCG rng);
 
 template<class T>
+void measurePrecision(double *residuals, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
+{
+    // A * B = C
+    // A is m*k (m rows, k columns)
+    // B is k*n (k rows, n columns)
+    // C is m*n (m rows, n columns)
+    T* A = (T *) malloc(M * K * sizeof(T));
+    T* B = (T *) malloc(K * N * sizeof(T));
+    T* C = (T *) calloc(M * N, sizeof(T));
+    T* C_ref = (T *) calloc(M * N, sizeof(T));
+
+    for(int i = 0; i < iterations; i++) {
+        gen_urand<T>(&rng, A, M * K);
+        gen_urand<T>(&rng, B, K * N);
+
+        func(A, B, C, M, K, N);        
+        referenceMatmul_full(A, B, C_ref, M, K, N);
+
+        double residual = rel_residual(C, C_ref, M * N);
+        residuals[i] = residual;
+    }
+
+    free(A);
+    free(B);
+    free(C);
+    free(C_ref);
+}
+
+
+template void measurePrecision<float>(double *residuals, int iterations, int M, int K, int N, MatMul<float> func, LCG rng);
+template void measurePrecision<double>(double *residuals, int iterations, int M, int K, int N, MatMul<double> func, LCG rng);
+
+template<class T>
 void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Time %s\n", function->name);
     // information set by makefile?:
@@ -141,12 +177,14 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         .targetFunction = function->name,
     };
 
-    double *timings = (double*)calloc(numSizes * iterationsPerConfig, sizeof(*timings));
+    double *timings = (double*) calloc(numSizes * iterationsPerConfig, sizeof(*timings));
+    double *residuals = (double*) calloc(numSizes * iterationsPerConfig, sizeof(*residuals));
     struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
         flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
+        measurePrecision<T>(&residuals[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
         struct run run = {
             .M = n,
             .N = n,
@@ -155,7 +193,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
-            .timings = &timings[i * iterationsPerConfig]
+            .timings = &timings[i * iterationsPerConfig],
+            .residuals = &residuals[i * iterationsPerConfig]
         };
         runs[i] = run;
     }

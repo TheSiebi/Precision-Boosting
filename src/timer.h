@@ -64,6 +64,7 @@ struct run
     // Theoretical, mathematical number of flops
     long math_flops;
     double *timings;
+    double *residuals;
 };
 
 struct measurement

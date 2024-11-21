@@ -9,3 +9,4 @@ make
 python3 scripts/plotting.py --input_folder $folder
 python3 scripts/plotting.py --input_folder $folder --compare
 python3 scripts/plotting.py --input_folder $folder --speedup
+python3 scripts/plotting.py --input_folder $folder --precision

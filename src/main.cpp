@@ -13,6 +13,7 @@
 #include <iostream>
 #include <iomanip>
 #include <string.h>
+#include <vector>
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -343,12 +344,12 @@ int main(int argc, char *argv[])
         */
 
         
+        /*
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
-        /*
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[7], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
@@ -369,7 +370,7 @@ int main(int argc, char *argv[])
         }
         
         
-        std::vector<int> timeIndices32 = {7, 8, 9};
+        std::vector<int> timeIndices32 = {10};
         for(const int value : timeIndices32)
         {
             timeFunction(&matmulVariants32[value], argv[2], rng);
