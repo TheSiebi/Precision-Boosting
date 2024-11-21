@@ -95,7 +95,7 @@ matmul_variant<double> matmulVariants64[] =
         .name = "Ootomo double v0",
         .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
     },
-#if CUDA_VERSION >= 8000
+#if CUDART_VERSION >= 8000
     {
         .function = matmul_cuda<double, double, 0>,
         .name = "matmul_cuda v0",

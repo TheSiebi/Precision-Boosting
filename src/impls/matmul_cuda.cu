@@ -359,7 +359,7 @@ flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, int M, int K,
     return counts;
 }
 
-#if CUDA_VERSION >= 8000
+#if CUDART_VERSION >= 8000
 template flop_counts matmul_cuda<double, double, 0>(double*, double*, double*, int, int, int);
 template flop_counts matmul_cuda<double, double, 1>(double*, double*, double*, int, int, int);
 template flop_counts matmul_cuda<double, double, 2>(double*, double*, double*, int, int, int);
