@@ -41,8 +41,17 @@ cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterationsPerConfig);
     cJSON_AddItemToObject(json, "timings", timings_array);
     
-    cJSON *residuals_array = cJSON_CreateDoubleArray(r->residuals, iterationsPerConfig);
-    cJSON_AddItemToObject(json, "residuals", residuals_array);
+    // Hacky fix: only add residuals if they are useful
+    bool valid_residuals = false;
+    for (int i = 0; i < iterationsPerConfig; i++) {
+        if (r->residuals[i] != 1.0) {
+            valid_residuals = true;
+        }
+    }
+    if (valid_residuals) {
+        cJSON *residuals_array = cJSON_CreateDoubleArray(r->residuals, iterationsPerConfig);
+        cJSON_AddItemToObject(json, "residuals", residuals_array);
+    }
 
     return json;
 }

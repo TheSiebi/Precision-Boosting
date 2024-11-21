@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
         }
         
         
-        std::vector<int> timeIndices32 = {10};
+        std::vector<int> timeIndices32 = {0, 1, 2, 10};
         for(const int value : timeIndices32)
         {
             timeFunction(&matmulVariants32[value], argv[2], rng);
