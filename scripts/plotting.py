@@ -194,6 +194,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         input_folder: Name of input folder at timings
     """
     plot_setup(ylabel="Relative residual", scientific=True)
+    plt.yscale('log', base=10)
     # -- Comparison Plot specific setup --
     #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
@@ -208,7 +209,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         # Skip if residuals not present
         if not('residuals' in runs[0]):
             continue
-        avg_residual = [compute_metrics(run['residuals'])[0] for run in runs]
+        avg_residual = [np.mean(np.array(run['residuals'])) for run in runs]
         sizes = [run['N'] for run in runs]
         residuals = [avg_residual[i] for i in range(len(runs))]
         label = d['meta']['function name']
