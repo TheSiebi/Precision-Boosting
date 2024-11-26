@@ -95,6 +95,16 @@ matmul_variant<double> matmulVariants64[] =
         .name = "Ootomo double v0",
         .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
     },
+    {
+        .function = matmul_simpleMarkidis_double<0>,
+        .name = "Simple Markidis double v0",
+        .description = "Split 3, 9 multiply",        
+    },
+    {
+        .function = matmul_simpleMarkidis_double<1>,
+        .name = "Simple Markidis double v1",
+        .description = "Split 4, 16 multiply",        
+    },
 #if SM_VERSION >= 800
     {
         .function = matmul_cuda<double, double, 0>,

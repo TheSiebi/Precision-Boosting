@@ -20,6 +20,9 @@ template<int version>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N); 
 flop_counts matmul_markidis(float *A, float *B, float *C, int M, int K, int N);
 
+template<int version>
+flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M, int K, int N);
+
 flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N);
 
 flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N);
