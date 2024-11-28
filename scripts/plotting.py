@@ -25,7 +25,7 @@ def load_json(file_path: str) -> dict:
     return data
 
 
-def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
+def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, float]:
     """
     Compute metrics on timings: median, mean, min, and max
 
@@ -33,7 +33,7 @@ def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
         timings: Raw timing measurements
 
     Returns:
-        Tuple of timing metrics (median, mean, min, max)
+        Tuple of timing metrics (median, mean, min, max, CI lower, CI upper)
     """
     if len(timings) == 0:
         print("Plotting error: empty timings")
@@ -48,9 +48,16 @@ def compute_timing_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
     max_timings = np.max(timings_ms)
     mean_timings = np.mean(timings_ms)
 
-    return median_timings, mean_timings, min_timings, max_timings
+    # Calculate 95% confidence interval
+    # Assume normality for now
+    sem = np.std(timings_ms, ddof=1) / np.sqrt(len(timings_ms)) 
+    z_critical = 1.959963984540054 # = norm.ppf(0.975) = 95% critical value (two-tailed)
+    ci_lower = mean_timings - z_critical * sem
+    ci_upper = mean_timings + z_critical * sem
 
-def plot_setup(ylabel='[Gflop/s]'):
+    return median_timings, mean_timings, min_timings, max_timings, ci_lower, ci_upper
+
+def plot_setup(ylabel='[Gflop/s]', scientific=False):
     # Set background color to light gray
     plt.gca().set_facecolor('0.95')
 
@@ -68,7 +75,9 @@ def plot_setup(ylabel='[Gflop/s]'):
     plt.ylabel(ylabel, rotation='horizontal', horizontalalignment='left')
 
     plt.gca().yaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=False))
-    plt.gca().ticklabel_format(style='plain', axis='y')  # This disables scientific notation
+
+    if not(scientific):
+        plt.gca().ticklabel_format(style='plain', axis='y')  # This disables scientific notation
 
     plt.gca().yaxis.set_label_coords(0, 1.02)
 
@@ -88,7 +97,7 @@ def generate_speedup_plot(data: dict, input_folder: str):
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-        avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
+        avg_timings = [compute_metrics(run['timings'])[0] for run in runs]
         sizes = [run['N'] for run in runs] # Assume square matrices only for now
         gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
@@ -155,16 +164,23 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-        avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
-        sizes = [run['N'] for run in runs]
+        metrics = [compute_metrics(run['timings']) for run in runs]
+        avg_timings = [metric[1] for metric in metrics]
+        ci_lower = [metric[4] for metric in metrics]
+        ci_upper = [metric[5] for metric in metrics]
         gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
+        ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
+        ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
+
+        sizes = [run['N'] for run in runs] # Only use square matrices for now
         label = d['meta']['function name']
         # Add compiler info if contained in data
         if 'compiler' in d['meta']:
             label += f" ({d['meta']['compiler']})"
         if 'flags' in d['meta']:
             label += f" {d['meta']['flags']}"
+        plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
         plt.plot(sizes, performances, color=line_colors[i%len(line_colors)], label=label)
 
     # Only show gpu if all data is from the same gpu
@@ -183,6 +199,56 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     plt.close()
 
 
+def generate_precision_comparison_plot(data: List[dict], input_folder: str):
+    """
+    Generate precision comparison plot and save it at timings/input_folder/
+
+    Args:
+        data: JSON data containing precision information
+        input_folder: Name of input folder at timings
+    """
+    plot_setup(ylabel="Relative residual", scientific=True)
+    plt.yscale('log', base=10)
+    # -- Comparison Plot specific setup --
+    #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+    plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
+    all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+    plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
+
+    # Compute performance for each run
+    for i in range(len(data)):
+        d = data[i]
+        runs = d['runs']
+        # Skip if residuals not present
+        if not('residuals' in runs[0]):
+            continue
+        avg_residual = [np.mean(np.array(run['residuals'])) for run in runs]
+        sizes = [run['N'] for run in runs]
+        residuals = [avg_residual[i] for i in range(len(runs))]
+        label = d['meta']['function name']
+        # Add compiler info if contained in data
+        if 'compiler' in d['meta']:
+            label += f" ({d['meta']['compiler']})"
+        if 'flags' in d['meta']:
+            label += f" {d['meta']['flags']}"
+        plt.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
+
+    # Only show gpu if all data is from the same gpu
+    title_suffix = ""
+    if all(d['meta']['gpu model'] == data[0]['meta']['gpu model'] for d in data):
+        title_suffix = f" on {data[0]['meta']['gpu model']}"
+
+    plt.title("Precision Comparison" + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
+    plt.legend()
+    plt.gca().set_ylim(bottom=0)
+
+    output_dir = input_folder
+    output_file = "prec_comparison.png"
+    print(output_dir)
+    plt.savefig(os.path.join(output_dir, output_file))
+    plt.close()
+
 def generate_performance_plot(data: dict, input_folder: str, plot_filename: str):
     """
     Generate performance plot and save it at timings/input_folder/plot_filename.png
@@ -196,10 +262,21 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
 
     # Compute performance for each run
     runs = data['runs']
-    avg_timings = [compute_timing_metrics(run['timings'])[0] for run in runs]
+    metrics = [compute_metrics(run['timings']) for run in runs]
+    avg_timings = [metric[1] for metric in metrics] # Use mean timings, as we are showing confidence intervals
+    ci_lower = [metric[4] for metric in metrics]
+    ci_upper = [metric[5] for metric in metrics]
+
     gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
     performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
+
+    # Performance bounds for confidence intervals
+    ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
+    ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
+
     sizes = [run['N'] for run in runs] # Only use square matrices for now
+
+    plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color='lightgrey', alpha=0.5, label='95% Confidence Interval')
 
     plt.plot(sizes, performances, marker='o', color='0.0')
     plt.xticks(sizes, sizes) # Force x-ticks to match data
@@ -223,6 +300,7 @@ def main():
         help='Set if you only want to generate plot of a specific JSON file, otherwise a plot for all JSON files in input_folder will be generated', default=None)
     parser.add_argument('--compare', action='store_true', help='Flag to combine performance plots into a single plot.')
     parser.add_argument('--speedup', action='store_true', help='Flag to generate speedup plot.')
+    parser.add_argument('--precision', action='store_true', help='Flag to generate precision plot.')
     args = parser.parse_args()
 
     rcParams['font.sans-serif'] = ['Tahoma', 'Verdana', 'Gill Sans MT', 'Calibri', 'DejaVu Sans']
@@ -236,6 +314,9 @@ def main():
         elif args.speedup:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_speedup_plot(json_data, args.input_folder)
+        elif args.precision:
+            json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
+            generate_precision_comparison_plot(json_data, args.input_folder)
         else:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):
