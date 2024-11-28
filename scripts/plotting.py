@@ -25,7 +25,7 @@ def load_json(file_path: str) -> dict:
     return data
 
 
-def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
+def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, float]:
     """
     Compute metrics on timings: median, mean, min, and max
 
@@ -33,7 +33,7 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
         timings: Raw timing measurements
 
     Returns:
-        Tuple of timing metrics (median, mean, min, max)
+        Tuple of timing metrics (median, mean, min, max, CI lower, CI upper)
     """
     if len(timings) == 0:
         print("Plotting error: empty timings")
@@ -48,7 +48,14 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float]:
     max_timings = np.max(timings_ms)
     mean_timings = np.mean(timings_ms)
 
-    return median_timings, mean_timings, min_timings, max_timings
+    # Calculate 95% confidence interval
+    # Assume normality for now
+    sem = np.std(timings_ms, ddof=1) / np.sqrt(len(timings_ms)) 
+    z_critical = 1.959963984540054 # = norm.ppf(0.975) = 95% critical value (two-tailed)
+    ci_lower = mean_timings - z_critical * sem
+    ci_upper = mean_timings + z_critical * sem
+
+    return median_timings, mean_timings, min_timings, max_timings, ci_lower, ci_upper
 
 def plot_setup(ylabel='[Gflop/s]', scientific=False):
     # Set background color to light gray
@@ -157,16 +164,23 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-        avg_timings = [compute_metrics(run['timings'])[0] for run in runs]
-        sizes = [run['N'] for run in runs]
+        metrics = [compute_metrics(run['timings']) for run in runs]
+        avg_timings = [metric[1] for metric in metrics]
+        ci_lower = [metric[4] for metric in metrics]
+        ci_upper = [metric[5] for metric in metrics]
         gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
+        ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
+        ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
+
+        sizes = [run['N'] for run in runs] # Only use square matrices for now
         label = d['meta']['function name']
         # Add compiler info if contained in data
         if 'compiler' in d['meta']:
             label += f" ({d['meta']['compiler']})"
         if 'flags' in d['meta']:
             label += f" {d['meta']['flags']}"
+        plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
         plt.plot(sizes, performances, color=line_colors[i%len(line_colors)], label=label)
 
     # Only show gpu if all data is from the same gpu
@@ -248,10 +262,21 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
 
     # Compute performance for each run
     runs = data['runs']
-    avg_timings = [compute_metrics(run['timings'])[0] for run in runs]
+    metrics = [compute_metrics(run['timings']) for run in runs]
+    avg_timings = [metric[1] for metric in metrics] # Use mean timings, as we are showing confidence intervals
+    ci_lower = [metric[4] for metric in metrics]
+    ci_upper = [metric[5] for metric in metrics]
+
     gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
     performances = [gflops[i] / avg_timings[i] for i in range(len(runs))]
+
+    # Performance bounds for confidence intervals
+    ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
+    ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
+
     sizes = [run['N'] for run in runs] # Only use square matrices for now
+
+    plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color='lightgrey', alpha=0.5, label='95% Confidence Interval')
 
     plt.plot(sizes, performances, marker='o', color='0.0')
     plt.xticks(sizes, sizes) # Force x-ticks to match data

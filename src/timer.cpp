@@ -178,7 +178,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     int powerOfMaxSize = 12;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
-    const int iterationsPerConfig = 10;
+    const int iterationsPerConfig = 50;
 
     struct measurementConfiguration runConfig = {
         .cpuModel = CPU,
