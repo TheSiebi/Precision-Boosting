@@ -116,7 +116,8 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
         // D{k} = A;
         // printf("Early termination not reached for k = %zu = l, D.size() = %zu\n", k, D.size());
         D.resize(k, std::vector<float>(m * n));
-        memcpy(D[k - 1].data(), a, m * n * sizeof(double));
+        for (int ij = 0; ij < m * n; ++ij)
+            D[k - 1][ij] = (float) a[ij]; // Downcasting? Paper just says D{k} = A
     }
 
     return D;
