@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib import rcParams
 from matplotlib.ticker import ScalarFormatter
 from typing import List, Tuple
+from scipy import stats
 
 
 def load_json(file_path: str) -> dict:
@@ -48,12 +49,40 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, 
     max_timings = np.max(timings_ms)
     mean_timings = np.mean(timings_ms)
 
+    # Perform Shapiro-Wilk Test
+    p_value = stats.shapiro(timings_ms)[1]
+    is_normal = p_value > 0.05
+    n = len(timings_ms)
+
     # Calculate 95% confidence interval
-    # Assume normality for now
-    sem = np.std(timings_ms, ddof=1) / np.sqrt(len(timings_ms)) 
-    z_critical = 1.959963984540054 # = norm.ppf(0.975) = 95% critical value (two-tailed)
-    ci_lower = mean_timings - z_critical * sem
-    ci_upper = mean_timings + z_critical * sem
+    if is_normal:
+        #print("Data is normally distributed")
+        # Parametric confidence interval    
+        sem = np.std(timings_ms, ddof=1) / np.sqrt(n) 
+        z_critical = 1.959963984540054 # = norm.ppf(0.975) = 95% critical value (two-tailed)
+        ci_lower = mean_timings - z_critical * sem
+        ci_upper = mean_timings + z_critical * sem
+    else:
+        #print("Data is not normally distributed, using non-parametric CI")
+        # # Non-parametric bootstrap confidence interval
+        # ci_bootstrap = stats.bootstrap((timings_ms,), np.mean, confidence_level=0.95)
+        # ci_lower, ci_upper = ci_bootstrap.confidence_interval.low, ci_bootstrap.confidence_interval.high
+
+        # Non-parametric CI using Le Boudec's method described in scientific benchmarking paper
+        sorted_timings = np.sort(timings_ms)
+        z_critical = 1.959963984540054 # = norm.ppf(0.975) = 95% critical value (two-tailed)
+        # Subtract 1 for zero indexing
+        lower_rank = int(np.floor((n - z_critical * np.sqrt(n)) / 2)) - 1
+        upper_rank = int(np.ceil(1 + (n + z_critical * np.sqrt(n)) / 2)) - 1
+        
+        print(f"Lower rank: {lower_rank}, upper rank: {upper_rank}")
+
+        # Ensure valid bounds
+        lower_rank = max(lower_rank, 0)
+        upper_rank = min(upper_rank, n - 1)
+
+        ci_lower = sorted_timings[lower_rank]
+        ci_upper = sorted_timings[upper_rank]
 
     return median_timings, mean_timings, min_timings, max_timings, ci_lower, ci_upper
 
