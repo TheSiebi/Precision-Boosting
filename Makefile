@@ -84,9 +84,8 @@ build/merge_accumulate_v0.o: src/impls/merge_accumulate_v0.cu
 build/matmul_cuBLAS.o: src/impls/matmul_cuBLAS.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuBLAS.cu -o $@
 
-# Compile with -O0 to stick with computations described in paper
 build/matmul_Ozaki_v0.o: src/impls/matmul_Ozaki_v0.cu
-	nvcc $(CUDA_FLAGS) -O0 -c src/impls/matmul_Ozaki_v0.cu -o $@
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_Ozaki_v0.cu -o $@
 
 run:
 	./build/main

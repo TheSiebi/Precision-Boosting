@@ -58,7 +58,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
     // beta = fl(...)
     const float log2u = -24.f;
-    const float beta = ceilf((-log2u + log2(q)) / 2.f);
+    const float beta = ceilf((-log2u + log2f(q)) / 2.f);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<float>> D = { std::vector<float>(m * n, 0.f) };
@@ -74,8 +74,8 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
         // if(max(mu) == 0) -> return
         double max = 0.0;
-        for (const auto mui: mu)
-            max = fmax(max, mui);
+        for (const auto mu_i: mu)
+            max = fmax(max, mu_i);
         if (max == 0.0)
         {
             // printf("Early termination\n");
@@ -83,7 +83,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
         }
 
         // w = fl(...);
-        std::vector<double> w(m);
+        std::vector<float> w(m);
         for (int i = 0; i < m; ++i)
             w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
 
@@ -98,8 +98,9 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
         D.resize(k, std::vector<float>(m * n));
         for (int ij = 0; ij < m * n; ++ij)
         {
-            D[k - 1][ij] = ((float) a[ij] + (float) S[ij]) - (float) S[ij]; // Compile with -O0!
-            a[ij] = (double) ((float) a[ij] - D[k - 1][ij]);
+            D[k - 1][ij] = a[ij] + S[ij];
+            D[k - 1][ij] -= S[ij];
+            a[ij] -= D[k - 1][ij];
         }
 
         // % Checking sparsity of D{k}
@@ -165,7 +166,7 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p)
-{   
+{
     // Ozaki splitting modifies input matrices. Therefore, copies must be made.
     std::vector<double> a_copy(a, a + m * n);
     std::vector<double> b_copy(b, b + n * p);
@@ -182,7 +183,7 @@ flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p
 
     PROFILE_FUNCTION_END();
 
-    flop_counts counts = 
+    flop_counts counts =
     {
         0L,
         8L + (4L*m+3L*m*n)*nA + (4L*n+3L*n*p)*nB + 2L*nA*nB*m*n*p,
