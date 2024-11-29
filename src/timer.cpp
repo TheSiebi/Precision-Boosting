@@ -117,11 +117,18 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M
     T* C = (T *) malloc(M * N * sizeof(T));
     flop_counts counts;
 
-    for(int i = 0; i < warmupIterations; i++)
+    for(int i = 0; i < warmupIterations; i++) {
+        printf("\rWarmup Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", i + 1, warmupIterations, M, K, N);
+        fflush(stdout);
         counts = func(A, B, C, M, K, N);
+    }
+
+    printf("\r%*s\r", 100, ""); // clear warmup progress line
 
     for(int i = 0; i < iterations; i++)
     {
+        printf("\rTiming Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", i + 1, iterations, M, K, N);
+        fflush(stdout);
         struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         counts = func(A, B, C, M, K, N);
@@ -129,6 +136,8 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M
         sub_timespec(start, end, &delta);
         timings[i] = (double) delta.tv_sec*NS_PER_SECOND + delta.tv_nsec;
     }
+
+    printf("\r%*s\r", 100, ""); // clear iteration progress line
 
     free(A);
     free(B);
@@ -153,6 +162,8 @@ void measurePrecision(double *residuals, int iterations, int M, int K, int N, Ma
     T* C_ref = (T *) calloc(M * N, sizeof(T));
 
     for(int i = 0; i < iterations; i++) {
+        printf("\rPrecision Measurement Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", i + 1, iterations, M, K, N);
+        fflush(stdout);
         gen_urand<T>(&rng, A, M * K);
         gen_urand<T>(&rng, B, K * N);
 
@@ -163,6 +174,7 @@ void measurePrecision(double *residuals, int iterations, int M, int K, int N, Ma
         residuals[i] = residual;
     }
 
+    printf("\r%*s\r", 100, ""); // clear iteration progress line
     free(A);
     free(B);
     free(C);
@@ -175,7 +187,7 @@ template void measurePrecision<double>(double *residuals, int iterations, int M,
 
 template<class T>
 void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
-    printf("Time %s\n", function->name);
+    printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
     int powerOfMaxSize = 12;
