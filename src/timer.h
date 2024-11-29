@@ -74,7 +74,7 @@ struct measurement
 };
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func, LCG rng);
+flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<T> func, LCG rng);
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);

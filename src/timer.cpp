@@ -104,7 +104,7 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
+flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<T> func, LCG rng)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -116,6 +116,9 @@ flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul
     gen_urand<T>(&rng, B, K * N);
     T* C = (T *) malloc(M * N * sizeof(T));
     flop_counts counts;
+
+    for(int i = 0; i < warmupIterations; i++)
+        counts = func(A, B, C, M, K, N);
 
     for(int i = 0; i < iterations; i++)
     {
@@ -134,8 +137,8 @@ flop_counts timeRun(double *timings, int iterations, int M, int K, int N, MatMul
     return counts;
 }
 
-template flop_counts timeRun<float>(double *timings, int iterations, int M, int K, int N, MatMul<float> func, LCG rng);
-template flop_counts timeRun<double>(double *timings, int iterations, int M, int K, int N, MatMul<double> func, LCG rng);
+template flop_counts timeRun<float>(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<float> func, LCG rng);
+template flop_counts timeRun<double>(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<double> func, LCG rng);
 
 template<class T>
 void measurePrecision(double *residuals, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
@@ -179,6 +182,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int iterationsPerConfig = 50;
+    const int warmupIterations = 5;
 
     struct measurementConfiguration runConfig = {
         .cpuModel = CPU,
@@ -192,7 +196,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
-        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
+        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, warmupIterations, n, n, n, function->function, rng);
         measurePrecision<T>(&residuals[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
         struct run run = {
             .M = n,
