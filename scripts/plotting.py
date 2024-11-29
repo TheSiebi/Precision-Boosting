@@ -75,7 +75,7 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, 
         lower_rank = int(np.floor((n - z_critical * np.sqrt(n)) / 2)) - 1
         upper_rank = int(np.ceil(1 + (n + z_critical * np.sqrt(n)) / 2)) - 1
         
-        print(f"Lower rank: {lower_rank}, upper rank: {upper_rank}")
+        #print(f"Lower rank: {lower_rank}, upper rank: {upper_rank}")
 
         # Ensure valid bounds
         lower_rank = max(lower_rank, 0)
