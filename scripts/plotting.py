@@ -336,6 +336,12 @@ def main():
     rcParams['font.family'] = 'sans-serif'
 
     input_folder = args.input_folder
+
+    # If input folder is empty, do nothing
+    if not os.listdir(input_folder):
+        #print(f"The input folder '{input_folder}' is empty. Exiting.")
+        return
+
     if args.input_file is None:
         if args.compare:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]

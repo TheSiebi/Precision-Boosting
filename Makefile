@@ -91,7 +91,7 @@ run:
 	./build/main
 
 plot:
-	bash ./plot.sh
+	bash ./plot.sh $(TYPE)
 
 clean:
 	rm -r ./build

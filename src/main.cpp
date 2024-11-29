@@ -374,20 +374,27 @@ int main(int argc, char *argv[])
         LCG rng = new_rng();
         uint64_t seed = rng.state;
 
-        std::vector<int> timeIndices64 = {};
-        for(const int value : timeIndices64)
+        if (strcmp(argv[1], "32") == 0)
         {
-            timeFunction(&matmulVariants64[value], argv[2], rng);
-            rng.state = seed;
+            std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
+            for(const int value : timeIndices32)
+            {
+                timeFunction(&matmulVariants32[value], argv[3], rng);
+                rng.state = seed;
+            }
+        } else if (strcmp(argv[1], "64") == 0) {
+            std::vector<int> timeIndices64 = {};
+            for(const int value : timeIndices64)
+            {
+                timeFunction(&matmulVariants64[value], argv[3], rng);
+                rng.state = seed;
+            }
+        } else {
+            printf("Usage: %s 32|64\n", argv[0]);
         }
+
         
         
-        std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
-        for(const int value : timeIndices32)
-        {
-            timeFunction(&matmulVariants32[value], argv[2], rng);
-            rng.state = seed;
-        }
     }
     return 0;
 }
