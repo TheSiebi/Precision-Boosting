@@ -88,7 +88,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
             w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
-        std::vector<double> S(m * n);
+        std::vector<float> S(m * n);
         for (int i = 0; i < m; ++i)
             for (int j = 0; j < n; ++j)
                 S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
