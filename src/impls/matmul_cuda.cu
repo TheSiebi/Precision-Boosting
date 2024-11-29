@@ -247,6 +247,129 @@ __global__ void matmul_kernel_v4(InputType *A, InputType *B, OutputType *C, int 
 }
 
 
+template <const int BM, const int BN, const int BK, const int WM, const int WN, 
+          const int N_WARP_ROWS_PER_BLOCK, const int N_WARP_COLS_PER_BLOCK,
+          const int WNITER, const int WMITER, const int TM, const int TN>
+__global__ void matmul_kernel_float_v0(const float *A, const float *B, float *C, int M, int K, int N)
+{
+    // allocate space for the current blocktile in shared memory
+    __shared__ float As[BM * BK];
+    __shared__ float Bs[BK * BN];
+
+    // Move blocktile to beggining of A's row and B's column
+    const int cRow = blockIdx.y;
+    const int cCol = blockIdx.x;
+    A += cRow * BM * K;
+    B += cCol * BN;
+    C += cRow * BM * N + cCol * BN;
+
+    // warpID in threadBlock
+    const int warpID = threadIdx.x / WARP_SIZE;
+    // The indices this warp has in the block tile
+    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
+    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+
+    // size of warp subtile
+    constexpr int WSUBM = WM / WMITER;
+    constexpr int WSUBN = WN / WNITER;
+
+    // Placement of the thread in the warp subtile
+    
+
+
+    // Loads are vectorized and each thread will load 4 elements into SMEM
+    const int elemsPerThread = 4;
+    // Calculate indices that this thread will load from GMEM to SMEM
+    // Note that for coalescing, it's important that consecutive threadIDs
+    // access consecutive memory addresses
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
+    // complete #rows that gets loaded in one loading iteration
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+
+    const int loadIterationsA = BM * BK / (elemsPerThread * blockDim.x);
+    const int loadIterationsB = BK * BN / (elemsPerThread * blockDim.x);
+
+    // Loop over all block tiles
+    for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
+    {
+        // populate SMEM cache
+        for (int i = 0; i < loadIterationsA; i++)
+        {
+            loadAndSplit<float4, float>(A, K, innerRowA, i * rowStrideA, innerColA, As, dAs, BK);
+        }
+        for (int i = 0; i < loadIterationsB; i++)
+        {
+            loadAndSplit<float4, float>(B, N, innerRowB, i * rowStrideB, innerColB, Bs, dBs, BN);
+        }
+
+        __syncthreads();
+
+        // advance blocktile
+        A += BK;
+        B += BK * N;
+
+        // start of data belonging to respective warp
+        int warpOffsetA = warpRow * WM * BK;
+        int warpOffsetB = warpCol * WN;
+        
+        // Warning: if this is removed and the compiler unrolls this loop, register usage for this kernel is too high
+        // and it can't be launched
+        #pragma unroll 1
+        for (int chunk = 0; chunk < CHUNK_K; chunk++)
+        {   
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+            {
+                wmma::load_matrix_sync(bFrag[tileCol], Bs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+                wmma::load_matrix_sync(dbFrag[tileCol], dBs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+            }
+            // calculate mmul
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            {
+                wmma::load_matrix_sync(aFrag, As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+                wmma::load_matrix_sync(daFrag, dAs + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                {
+                    wmma::fill_fragment(tmpFrag, 0.0f);
+                    wmma::mma_sync(tmpFrag, aFrag, bFrag[tileCol], tmpFrag);
+
+                    // accumulate outside tensor cores to avoid RZ
+                    for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+                    {
+                        cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
+                    }
+                    
+                    // matrices for error correction can be directly accumulated in the tensor core
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], daFrag, bFrag[tileCol], dcFrag[tileRow][tileCol]);
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], aFrag, dbFrag[tileCol], dcFrag[tileRow][tileCol]);
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // Store results back to C matrix
+    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {   
+            // perform merge according to Ootomo paper
+            for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+            {
+                cFrag[tileRow][tileCol].x[i] += dcFrag[tileRow][tileCol].x[i] / 2048.0f;
+            }
+
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
+    }
+}
+
 
 template<typename InputType, typename OutputType, int version>
 void matmul(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
