@@ -105,6 +105,16 @@ matmul_variant<double> matmulVariants64[] =
         .name = "Simple Markidis double v1",
         .description = "Split 4, 16 multiply",        
     },
+    {
+        .function = matmul_simpleMarkidis_double_double<0>,
+        .name = "Simple Markidis double double v0",
+        .description = "Split 3, 9 multiply",        
+    },
+    {
+        .function = matmul_simpleMarkidis_double_double<1>,
+        .name = "Simple Markidis double double v1",
+        .description = "Split 4, 16 multiply",        
+    },
 #if SM_VERSION >= 800
     {
         .function = matmul_cuda<double, double, 0>,
