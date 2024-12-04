@@ -316,6 +316,7 @@ void divide_cuda(Type *C, int N, double scale)
         C[i] /= scale;
 }
 
+#if SM_VERSION >= 800
 template<int splitCount, int mergeCount>
 flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C, int M, int K, int N,
                                                 std::pair<int, int> mergePattern[mergeCount]) 
@@ -420,3 +421,4 @@ flop_counts matmul_simpleMarkidis_double_double<1>(double *A, double *B, double 
     std::pair<int, int> merges[] = {{3, 3}, {3, 2}, {2, 3}, {2, 2}, {3, 1}, {1, 3}, {2, 1}, {1, 2}, {3, 0}, {0, 3}, {2, 0}, {0, 2},  {1, 1}, {0, 1}, {1, 0}, {0, 0}};
     return matmul_simpleMarkidis_double_double<4, 16>(A, B, C, M, K, N, merges);
 }
+#endif

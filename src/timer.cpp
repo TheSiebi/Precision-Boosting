@@ -26,7 +26,7 @@ cJSON* measurement_configuration_to_json(struct measurementConfiguration *conf) 
     return json;
 }
 
-cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
+cJSON* run_to_json(struct run *r, int iterations, int precisionIterations) {
     cJSON *json = cJSON_CreateObject();
     if (!json) return NULL;
 
@@ -38,41 +38,41 @@ cJSON* run_to_json(struct run *r, int iterationsPerConfig) {
     cJSON_AddNumberToObject(json, "flops64", r->flops64);
     cJSON_AddNumberToObject(json, "math_flops", r->math_flops);
 
-    cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterationsPerConfig);
+    cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterations);
     cJSON_AddItemToObject(json, "timings", timings_array);
     
     // Hacky fix: only add residuals if they are useful
     bool valid_residuals = false;
-    for (int i = 0; i < iterationsPerConfig; i++) {
+    for (int i = 0; i < iterations; i++) {
         if (r->residuals[i] != 1.0) {
             valid_residuals = true;
         }
     }
-    if (valid_residuals) {
-        cJSON *residuals_array = cJSON_CreateDoubleArray(r->residuals, iterationsPerConfig);
+    if (valid_residuals && precisionIterations > 0) {
+        cJSON *residuals_array = cJSON_CreateDoubleArray(r->residuals, precisionIterations);
         cJSON_AddItemToObject(json, "residuals", residuals_array);
     }
 
     return json;
 }
 
-cJSON* measurement_to_json(struct measurement *m, int numInputSizes, int iterationsPerConfig) {
+cJSON* measurement_to_json(struct measurement *m, int numInputSizes, int *iterationsPerConfig, int *precisionIterationsPerConfig) {
     cJSON *root = cJSON_CreateObject();
     cJSON_AddItemToObject(root, "meta", measurement_configuration_to_json(&m->configuration));
 
     cJSON *runs_array = cJSON_CreateArray();
     for (int i = 0; i < numInputSizes; i++) {  // Assuming there is a runCount field or similar
-        cJSON_AddItemToArray(runs_array, run_to_json(&m->runs[i], iterationsPerConfig));
+        cJSON_AddItemToArray(runs_array, run_to_json(&m->runs[i], iterationsPerConfig[i], precisionIterationsPerConfig[i]));
     }
     cJSON_AddItemToObject(root, "runs", runs_array);
 
     return root;
 }
 
-void write_measurement_to_file(struct measurement *m, const char *path, const char *name, int numInputSizes, int iterationsPerConfig) {
+void write_measurement_to_file(struct measurement *m, const char *path, const char *name, int numInputSizes, int *iterationsPerConfig, int *precisionIterationsPerConfig) {
     char buffer[512];
     snprintf(buffer, sizeof(buffer), "%s/%s.json", path, name);
-    cJSON *json = measurement_to_json(m, numInputSizes, iterationsPerConfig);
+    cJSON *json = measurement_to_json(m, numInputSizes, iterationsPerConfig, precisionIterationsPerConfig);
     char *string = cJSON_Print(json);
     FILE *file = fopen(buffer, "w");
     if (file == NULL) {
@@ -152,6 +152,9 @@ template flop_counts timeRun<double>(double *timings, int iterations, int warmup
 template<class T>
 void measurePrecision(double *residuals, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
 {
+    if (iterations == 0)
+        return;
+    
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
@@ -190,11 +193,13 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 12;
+    int powerOfMaxSize = 13;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
-    const int iterationsPerConfig = 50;
-    const int warmupIterations = 5;
+    const int maxIterationsPerConfig = 50;
+    int *iterationsPerConfig = (int*) calloc(numSizes, sizeof(*iterationsPerConfig));
+    int *precisionIterationsPerConfig = (int*) calloc(numSizes, sizeof(*precisionIterationsPerConfig));
+    const int warmupIterations = 1;
 
     struct measurementConfiguration runConfig = {
         .cpuModel = CPU,
@@ -202,14 +207,33 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         .targetFunction = function->name,
     };
 
-    double *timings = (double*) calloc(numSizes * iterationsPerConfig, sizeof(*timings));
-    double *residuals = (double*) calloc(numSizes * iterationsPerConfig, sizeof(*residuals));
+    double *timings = (double*) calloc(numSizes * maxIterationsPerConfig, sizeof(*timings));
+    double *residuals = (double*) calloc(numSizes * maxIterationsPerConfig, sizeof(*residuals));
     struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
     for (int i = 0; i < numSizes; i++)
     {
         int n = 1 << (i + powerOfMinSize);
-        flop_counts counts = timeRun<T>(&timings[i * iterationsPerConfig], iterationsPerConfig, warmupIterations, n, n, n, function->function, rng);
-        measurePrecision<T>(&residuals[i * iterationsPerConfig], iterationsPerConfig, n, n, n, function->function, rng);
+
+        // Adapt number of iterations based on heuristics on runtime
+        iterationsPerConfig[i] = maxIterationsPerConfig;
+        precisionIterationsPerConfig[i] = maxIterationsPerConfig;
+
+        if (n >= 1 << 13) {
+            iterationsPerConfig[i] = 1;
+        } else if (n >= 1 << 12) {
+            iterationsPerConfig[i] = 5;
+        }
+        
+        if (n >= 1 << 11) {
+            precisionIterationsPerConfig[i] = 0;
+        } else if (n >= 1 << 10) {
+            precisionIterationsPerConfig[i] = 1;
+        } else if (n >= 1 << 9) {
+            precisionIterationsPerConfig[i] = 5;
+        }
+
+        flop_counts counts = timeRun<T>(&timings[i * maxIterationsPerConfig], iterationsPerConfig[i], warmupIterations, n, n, n, function->function, rng);
+        measurePrecision<T>(&residuals[i * maxIterationsPerConfig], precisionIterationsPerConfig[i], n, n, n, function->function, rng);
         struct run run = {
             .M = n,
             .N = n,
@@ -218,8 +242,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
-            .timings = &timings[i * iterationsPerConfig],
-            .residuals = &residuals[i * iterationsPerConfig]
+            .timings = &timings[i * maxIterationsPerConfig],
+            .residuals = &residuals[i * maxIterationsPerConfig]
         };
         runs[i] = run;
     }
@@ -227,7 +251,10 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         .configuration = runConfig,
         .runs = runs
     };
-    write_measurement_to_file(&measurement, path, function->name, numSizes, iterationsPerConfig);
+    write_measurement_to_file(&measurement, path, function->name, numSizes, iterationsPerConfig, precisionIterationsPerConfig);
+
+    free(iterationsPerConfig);
+    free(precisionIterationsPerConfig);
 }
 
 template void timeFunction<float>(matmul_variant<float> *function, char *path, LCG rng);
