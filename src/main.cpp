@@ -24,19 +24,19 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_simpleMarkidis<0>,
         .name = "Simple Markidis v0",
-        .description = "Simple markidis with simple cuda matmul",
+        .description = "Simple markidis with simple tensor matmul",
         .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<1>,
         .name = "Simple Markidis v1",
-        .description = "Simple markidis with simple tensor matmul",
+        .description = "Simple markidis with multiple warps per block",
         .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<2>,
         .name = "Simple Markidis v2",
-        .description = "Simple markidis with multiple warps per block",
+        .description = "Simple markidis with shared memory",
         .highestPerforming = false,
     },
     {
@@ -44,12 +44,6 @@ matmul_variant<float> matmulVariants32[] =
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
         .highestPerforming = false,
-    },
-    {
-        .function = matmul_simpleMarkidis<4>,
-        .name = "Simple Markidis v4",
-        .description = "Simple markidis with shared memory",
-        .highestPerforming = true,
     },
     {
         .function = matmul_markidis,
@@ -82,7 +76,7 @@ matmul_variant<float> matmulVariants32[] =
         .highestPerforming = true,
     },
     {
-        .function = matmul_cuda<float, float, 0, false>,
+        .function = matmul_cuda<float, float, 1, false>,
         .name = "matmul_cuda_float v0",
         .description = "CUDA core fp32 matrix multiplication with warptiling",
     },
@@ -142,25 +136,25 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_cuda<double, double, 0, true>,
         .name = "matmul_cuda v0",
-        .description = "straightforward triple for loop implementation running on the GPU",
+        .description = "simple tensor matmul",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 1, true>,
         .name = "matmul_cuda v1",
-        .description = "straightforward triple for loop implementation running on the GPU",
+        .description = "multiple warps per block",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 2, true>,
         .name = "matmul_cuda v2",
-        .description = "straightforward triple for loop implementation running on the GPU",
+        .description = "with shared memory",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 3, true>,
         .name = "matmul_cuda v3",
-        .description = "straightforward triple for loop implementation running on the GPU",
+        .description = "with shared memory",
         .highestPerforming = false,
     }
 #endif

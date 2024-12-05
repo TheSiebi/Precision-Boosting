@@ -131,7 +131,6 @@ template flop_counts matmul_simpleMarkidis<0>(float *A, float *B, float *C, int 
 template flop_counts matmul_simpleMarkidis<1>(float *A, float *B, float *C, int M, int K, int N);
 template flop_counts matmul_simpleMarkidis<2>(float *A, float *B, float *C, int M, int K, int N);
 template flop_counts matmul_simpleMarkidis<3>(float *A, float *B, float *C, int M, int K, int N);
-template flop_counts matmul_simpleMarkidis<4>(float *A, float *B, float *C, int M, int K, int N);
 
 template<int splitCount>
 static __global__ 
@@ -217,7 +216,7 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
         int aIndex = mergePattern[i].first * M * K;
         int bIndex = mergePattern[i].second * K * N;
         int cIndex = i * M * N;
-        matmulTensorCores<half, float, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        matmulTensorCores<half, float, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
@@ -365,7 +364,7 @@ flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C,
         int aIndex = mergePattern[i].first * M * K;
         int bIndex = mergePattern[i].second * K * N;
         int cIndex = i * M * N;
-        matmulTensorCores<double, double, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        matmulTensorCores<double, double, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         double scale = std::pow(2048, mergePattern[i].first) * std::pow(2048, mergePattern[i].second);
         divide_cuda<double><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, scale);
     }
