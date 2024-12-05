@@ -105,13 +105,13 @@ constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
  * Simple kernel that splits a float matrix into two half matrices according to the Ootoma paper
  */
 template<typename srcType, typename trgtType>
-__global__ void split_cuda(srcType *A, trgtType *A0, trgtType *A1)
+__global__ void split_cuda(srcType *A, trgtType *A0, trgtType *A1, srcType factor)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     srcType value = A[i];
     trgtType mainPart = (trgtType)value;
     A0[i] = mainPart;
-    A1[i] = (trgtType)((value - (srcType)mainPart) * 2048.0f);
+    A1[i] = (trgtType)((value - (srcType)mainPart) * factor);
 }
 
 template<typename srcType, typename trgtType, typename returnType>
@@ -140,13 +140,13 @@ __global__ void split4_cuda(double *A, half *dA_high, half *dA_middleUp, half *d
  * Simple kernel that performs the merge described in the Ootomo paper including the smallest term. 
  */
 template<typename srcType, typename trgtType, bool useLastTerm>
-__global__ void merge_cuda(trgtType *C, srcType *AB, srcType *dAB, srcType *AdB, srcType *dAdB)
+__global__ void merge_cuda(trgtType *C, srcType *AB, srcType *dAB, srcType *AdB, srcType *dAdB, trgtType factor)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if constexpr(useLastTerm)
-        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / 2048.0f + (trgtType) dAdB[i] / 4194304.0f;
+        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / factor + (trgtType) dAdB[i] / (factor * factor);
     else 
-        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / 2048.0f;
+        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / factor;
 }
 
 /**
@@ -687,9 +687,9 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
-        split_cuda<float, half><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        split_cuda<float, half><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1], 2048.0f);
         PRINT_ON_ERROR(cudaGetLastError());
-        split_cuda<float, half><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        split_cuda<float, half><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1], 2048.0f);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -779,7 +779,7 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("merge");
         int threadsPerBlock = 256;
-        merge_cuda<float, float, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        merge_cuda<float, float, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 2048.0f);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -900,9 +900,9 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
-        split_cuda<double, float><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        split_cuda<double, float><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1], 1 << 24);
         PRINT_ON_ERROR(cudaGetLastError());
-        split_cuda<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        split_cuda<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1], 1 << 24);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -949,7 +949,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
     {
         PROFILE_SEGMENTS_SWITCH("merge");
         int threadsPerBlock = 256;
-        merge_cuda<float, double, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3]);
+        merge_cuda<float, double, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 1 << 24);
         PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
