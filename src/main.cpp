@@ -72,6 +72,11 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Same as Ootomo_v1 but with better data reuse",
     },
     {
+        .function = matmul_cuda<float, float, 0>,
+        .name = "matmul_cuda_float v0",
+        .description = "CUDA core fp32 matrix multiplication with warptiling",
+    },
+    {
         .function = matmul_cuBLAS32,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",

@@ -89,7 +89,7 @@ constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
     constexpr int N_WMMA_COLS_PER_WARP = WN / WMMA_N;
     constexpr int threadsPerBlock = N_WARP_ROWS_PER_BLOCK * N_WARP_COLS_PER_BLOCK * WARP_SIZE;
     // In each SMEM loading iteration, each thread loads 4 values from GMEM
-    // These asserts ensures that the loading loop does not convert divergent branches (i.e. each thread has 
+    // These asserts ensures that the loading loop does not create divergent branches (i.e. each thread has 
     // the same amount of values to load)
     static_assert((BM * BK) % (4 * threadsPerBlock) == 0);
     static_assert((BK * BN) % (4 * threadsPerBlock) == 0);
