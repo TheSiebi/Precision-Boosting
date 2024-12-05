@@ -1,3 +1,38 @@
+#include <cuda_fp16.h>
+
+//NOTE(max): this is constant for now, if we have architectures that have
+//different warp sizes we need to make this dynamic
+#define WARP_SIZE 32
+
+typedef struct alignas(8) 
+{
+    half x, y, z, w;
+} half4;
+
+struct matmulTemplateArgsCUDA
+{
+    int BM; // The number of rows of C a threadblock computes
+    int BN; // The number of cols of C a threadblock computes
+    int BK; // The dimension of the "dotproducts" a threadblock performs in each iteration 
+    int WM; // The number of rows of C a warp computes
+    int WN; // The number of cols of C a warp computes
+    int TM; // The number of rows of C a thread computes
+    int TN; // The number of cols of C a thread computes
+    int WMITER; // The number of warpTiles in the M dimension of C
+    int WNITER; // The number of warpTiles in the N dimension of C
+    int threadsPerBlock; // The amount of threads a threadblock needs
+};
+
+struct matmulScalesCUDA
+{
+    int scaleBM;
+    int scaleBN;
+    int scaleBK;
+    int scaleWM;
+    int scaleWN;
+    int scaleTM;
+    int scaleTN;
+};
 
 template<typename InputType, typename OutputType, int version>
 void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, int N);

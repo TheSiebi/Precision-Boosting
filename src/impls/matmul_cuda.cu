@@ -3,19 +3,15 @@
 #include <cuda_device_runtime_api.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
-#include <cuda_fp16.h>
 #include <mma.h>
 #include <driver_types.h>
 #include <type_traits>
 
 #include "../matmul.h"
+#include "./matmul_cuda.h"
 #include "../profiler.h"
 #include "../cuda_utils.h"
 #include "../timer.h"
-
-//NOTE(max): this is constant for now, if we have architectures that have
-//different warp sizes we need to make this dynamic
-#define WARP_SIZE 32
 
 template<typename InputType, typename OutputType,
          int FragSizeM, int FragSizeK, int FragSizeN>
@@ -235,11 +231,6 @@ __global__ void matmul_kernel_Tensor_v3(InputType *A, InputType *B, OutputType *
             wmma::store_matrix_sync(C + offsetC + (m * FragSizeM * N + n * FragSizeN) , cFrag[m][n], N, wmma::mem_row_major);
 }
 
-struct alignas(8) half4 
-{
-    half x, y, z, w;
-};
-
 template<typename InputType, typename OutputType>
 __global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, int M, int K, int N) 
 {
@@ -438,31 +429,6 @@ __global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, Ou
     }
 }
 
-struct matmulTemplateArgsCUDA
-{
-    int BM; // The number of rows of C a threadblock computes
-    int BN; // The number of cols of C a threadblock computes
-    int BK; // The dimension of the "dotproducts" a threadblock performs in each iteration 
-    int WM; // The number of rows of C a warp computes
-    int WN; // The number of cols of C a warp computes
-    int TM; // The number of rows of C a thread computes
-    int TN; // The number of cols of C a thread computes
-    int WMITER; // The number of warpTiles in the M dimension of C
-    int WNITER; // The number of warpTiles in the N dimension of C
-    int threadsPerBlock; // The amount of threads a threadblock needs
-};
-
-struct matmulScalesCUDA
-{
-    int scaleBM;
-    int scaleBN;
-    int scaleBK;
-    int scaleWM;
-    int scaleWN;
-    int scaleTM;
-    int scaleTN;
-};
-
 constexpr struct matmulScalesCUDA getArgScalesCUDA(int configuration) {
     
     if (configuration == 0)
@@ -560,6 +526,8 @@ void matmulCUDACores(InputType *A, InputType *B, OutputType *C, int M, int K, in
     }
 }
 
+template void matmulCUDACores<half, float, 0>(half*, half*, float*, int, int, int);
+template void matmulCUDACores<half, float, 1>(half*, half*, float*, int, int, int);
 
 template<typename InputType, typename OutputType, int version>
 void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, int N)

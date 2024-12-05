@@ -9,21 +9,7 @@
 #include "../split.h"
 #include "../cuda_utils.h"
 #include "../timer.h"
-
-__global__ void basic_mixed_precision_matmul(const half* A, const half* B, float *C, int M, int K, int N)
-{
-    const auto index = [](int row, int col, int rows, int cols)
-    {
-        return row * cols + col; // row-major
-    };
-    const int tid = blockIdx.x;
-    const int row = tid / N;
-    const int col = tid % N;
-    C[index(row, col, M, N)] = 0.f;
-    for (int l = 0; l < K; ++l)
-        //C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)] * B[index(l, col, K, N)]);
-        C[index(row, col, M, N)] += __half2float(A[index(row, l, M, K)]) * __half2float(B[index(l, col, K, N)]);
-}
+#include "./matmul_cuda.h"
 
 flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N)
 {
@@ -63,11 +49,11 @@ flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, i
     PRINT_ON_ERROR(cudaMemcpy(dev_dB16,    dB16,    K * N * sizeof(half), cudaMemcpyHostToDevice));
 
     // Multiply matrices
-    basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_B16, dev_A16B16, M, K, N);
+    matmulCUDACores<half, float, 0>(dev_A16, dev_B16, dev_A16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    basic_mixed_precision_matmul<<<M * N, 1>>>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
+    matmulCUDACores<half, float, 0>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    basic_mixed_precision_matmul<<<M * N, 1>>>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
+    matmulCUDACores<half, float, 0>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
 
     // Copy from device to host
