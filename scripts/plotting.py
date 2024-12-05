@@ -7,6 +7,7 @@ from matplotlib import rcParams
 from matplotlib.ticker import ScalarFormatter
 from typing import List, Tuple
 from scipy import stats
+#import statsmodels.api as sm
 
 
 def load_json(file_path: str) -> dict:
@@ -49,13 +50,16 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, 
     max_timings = np.max(timings_ms)
     mean_timings = np.mean(timings_ms)
 
-    # Perform Shapiro-Wilk Test
     n = len(timings_ms)
-    if (n >= 3):
-        p_value = stats.shapiro(timings_ms)[1]
-        is_normal = p_value > 0.05
-    else:
-        is_normal = False # too small sample size for doing shapiro-wilk test
+
+    # Perform Shapiro-Wilk Test (deprecated, analysis has revealed that both shapiro-wilk always rejects normality assumption and q-q plots are not straight)
+    # if (n >= 3):
+    #     p_value = stats.shapiro(timings_ms)[1]
+    #     print(p_value)
+    #     is_normal = p_value > 0.05
+    # else:
+    #     is_normal = False # too small sample size for doing shapiro-wilk test
+    is_normal = False
 
     # Calculate 95% confidence interval
     if is_normal:
@@ -283,6 +287,44 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
     plt.savefig(os.path.join(output_dir, output_file))
     plt.close()
 
+
+# def plot_histogram_qq_grid(runs, input_folder, file_prefix, num_rows=3):
+#     num_datasets = len(runs)
+#     num_cols = 2  # Each dataset will have 2 columns: histogram and Q-Q plot
+
+#     # Calculate the number of rows based on the specified grid
+#     rows = max(num_rows, num_datasets)
+    
+#     # Set up the figure and axes for paired plots
+#     fig, axes = plt.subplots(rows, num_cols, figsize=(10, rows * 4))
+    
+#     # If there's only one dataset, axes might not be a nested array
+#     if rows == 1:
+#         axes = np.array([axes])
+
+#     for i, run in enumerate(runs):
+#         if i >= rows:  # Limit plots to the number of rows specified
+#             break
+        
+#         # Access the data and filter out NaN values
+#         timings = np.array(run['timings'])
+#         timings = timings[~np.isnan(timings)]  # Remove NaNs
+
+#         m, k, n = run['M'], run['K'], run['N']
+        
+#         # Plot histogram
+#         axes[i, 0].hist(timings, bins=20, color='skyblue', edgecolor='black')
+#         axes[i, 0].set_title(f"Histogram for M={m}, K={k}, N={n}")
+#         axes[i, 0].set_xlabel('Values')
+#         axes[i, 0].set_ylabel('Frequency')
+        
+#         # Plot Q-Q plot
+#         sm.qqplot(timings, line='s', ax=axes[i, 1])
+#         axes[i, 1].set_title(f"Q-Q Plot for M={m}, K={k}, N={n}")
+    
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(input_folder, f"{file_prefix}_qq_plots.png"))
+
 def generate_performance_plot(data: dict, input_folder: str, plot_filename: str):
     """
     Generate performance plot and save it at timings/input_folder/plot_filename.png
@@ -317,6 +359,7 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
     plt.title(f"Performance of {data['meta']['function name']} on {data['meta']['gpu model']}", loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
     plt.gca().set_ylim(bottom=0)
 
+    #plot_histogram_qq_grid(runs, input_folder, plot_filename)
     output_dir = input_folder
     output_file = f"{plot_filename}.png"
     print(output_dir)
