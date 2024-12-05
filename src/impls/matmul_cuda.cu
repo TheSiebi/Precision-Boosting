@@ -247,35 +247,121 @@ __global__ void matmul_kernel_v4(InputType *A, InputType *B, OutputType *C, int 
 }
 
 
+template <const int BM, const int BN, const int BK>
+__device__ void loadFromGmem(int N, int K, const float *A, const float *B, 
+    float *As, float *Bs, int innerRowA, int innerColA, int rowStrideA, int innerRowB, int innerColB, int rowStrideB)
+{
+    for (int offset = 0; offset + rowStrideA <= BM; offset += rowStrideA)
+    {
+        const float4 tmp =  reinterpret_cast<const float4 *>(
+            &A[(innerRowA + offset) * K + innerColA * 4])[0];
+        
+        // load A in ColMajor order
+        As[(innerColA * 4 + 0) * BM + innerRowA + offset] = tmp.x;
+        As[(innerColA * 4 + 1) * BM + innerRowA + offset] = tmp.y;
+        As[(innerColA * 4 + 2) * BM + innerRowA + offset] = tmp.z;
+        As[(innerColA * 4 + 3) * BM + innerRowA + offset] = tmp.w;
+    }
+    
+    for (int offset = 0; offset + rowStrideB <= BK; offset += rowStrideB)
+    {
+        reinterpret_cast<float4 *>(
+            &Bs[(innerRowB + offset) * BN + innerColB * 4])[0] =
+        reinterpret_cast<const float4 *>(
+            &B[(innerRowB + offset) * N + innerColB * 4])[0];
+    }
+}
+
 template <const int BM, const int BN, const int BK, const int WM, const int WN, 
-          const int N_WARP_ROWS_PER_BLOCK, const int N_WARP_COLS_PER_BLOCK,
-          const int WNITER, const int WMITER, const int TM, const int TN>
+    const int WMITER, const int WNITER, const int WSUBM, const int WSUBN, 
+    const int TM, const int TN>
+__device__ void warpMatmul(float *regM, float *regN, float *threadResults, const float *As,
+    const float *Bs, const int warpRow, const int warpCol, const int threadRowInWarp, const int threadColInWarp)
+{
+    // Compute results of warp in an outer product instead of an inner product for better cache reuse
+    for (int dotIdx = 0; dotIdx < BK; dotIdx++)
+    {
+        // cache the necessary data for this dotIdx
+        for (int wSubRowIdx = 0; wSubRowIdx < WMITER; wSubRowIdx++)
+        {
+            for (int i = 0; i < TM; i++)
+            {
+                regM[wSubRowIdx * TM + i] = 
+                    As[dotIdx * BM + warpRow * WM + wSubRowIdx * WSUBM + threadRowInWarp * TM + i];
+            }
+        }
+
+        for (int wSubColIdx = 0; wSubColIdx < WNITER; wSubColIdx++)
+        {
+            for (int i = 0; i < TN; i++)
+            {
+                regN[wSubColIdx * TN + i] = 
+                    Bs[dotIdx * BN + warpCol * WN + wSubColIdx * WSUBN + threadColInWarp * TN + i];
+            }
+        }
+
+        // execute warpTile matmul
+        for (int wSubRowIdx = 0; wSubRowIdx < WMITER; wSubRowIdx++)
+        {
+            for (int wSubColIdx = 0; wSubColIdx < WNITER; wSubColIdx++)
+            {
+                for (int resIdxM = 0; resIdxM < TM; resIdxM++)
+                {
+                    for (int resIdxN = 0; resIdxN < TN; resIdxN++)
+                    {
+                        threadResults[(wSubRowIdx + TM + resIdxM) * (WNITER * TN) + 
+                            wSubColIdx * TN + resIdxN] += regM[wSubRowIdx * TM + resIdxM] * regN[wSubColIdx * TN + resIdxN];
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Note: Kernel has been inspired by: 
+ *  - https://github.com/siboehm/SGEMM_CUDA/tree/master
+ * 
+ * Assumes:
+ * - M % BM == K % BK == N % BN == 0
+ * - BM % WM == BN % WN == 0
+ * - (4 * threadsPerBlock) % BK == (4 * threadsPerBlock) % BN == 0
+ * - BM * BK % (4 * threadsPerBlock) == BK * BN % (4 * threadsPerBlock) == 0
+ * - TN % 4 == 0 
+ * - TN * TM % 4 == 0
+ */
+template <const int BM, const int BN, const int BK, const int WM, const int WN, 
+          const int WNITER, const int TM, const int TN>
 __global__ void matmul_kernel_float_v0(const float *A, const float *B, float *C, int M, int K, int N)
 {
     // allocate space for the current blocktile in shared memory
     __shared__ float As[BM * BK];
     __shared__ float Bs[BK * BN];
 
-    // Move blocktile to beggining of A's row and B's column
-    const int cRow = blockIdx.y;
-    const int cCol = blockIdx.x;
-    A += cRow * BM * K;
-    B += cCol * BN;
-    C += cRow * BM * N + cCol * BN;
+    const int cRow = blockIdx.x;
+    const int cCol = blockIdx.y;
 
     // warpID in threadBlock
     const int warpID = threadIdx.x / WARP_SIZE;
+    const int warpLane = threadIdx.x % WARP_SIZE;
     // The indices this warp has in the block tile
-    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
-    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+    const int warpRow = warpID / (BN / WN);
+    const int warpCol = warpID % (BN / WN);
 
     // size of warp subtile
+    constexpr int WMITER = (WM * WN) / (WARP_SIZE * TM * TN * WNITER);
     constexpr int WSUBM = WM / WMITER;
     constexpr int WSUBN = WN / WNITER;
 
     // Placement of the thread in the warp subtile
-    
+    const int threadRowInWarp = warpLane / (WSUBN / TN);
+    const int threadColInWarp = warpLane % (WSUBN / TN);
 
+    // Move blocktile to beggining of A's row and B's column
+    A += cRow * BM * K;
+    B += cCol * BN;
+    // Move C to warp's output tile
+    C += (cRow * BM + warpRow * WM) * N + cCol * BN + warpCol * WN;
 
     // Loads are vectorized and each thread will load 4 elements into SMEM
     const int elemsPerThread = 4;
@@ -290,83 +376,51 @@ __global__ void matmul_kernel_float_v0(const float *A, const float *B, float *C,
     const int rowStrideA = elemsPerThread * blockDim.x / BK;
     const int rowStrideB = elemsPerThread * blockDim.x / BN;
 
-    const int loadIterationsA = BM * BK / (elemsPerThread * blockDim.x);
-    const int loadIterationsB = BK * BN / (elemsPerThread * blockDim.x);
+    // thread-local cache for results in registerfile
+    float threadResults[WMITER * TM * WNITER * TN] = {0.0f};
+    // thread-local cache for A and B
+    float regM[WMITER * TM] = {0.0f};
+    float regN[WNITER * TN] = {0.0f};
 
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
     {
         // populate SMEM cache
-        for (int i = 0; i < loadIterationsA; i++)
-        {
-            loadAndSplit<float4, float>(A, K, innerRowA, i * rowStrideA, innerColA, As, dAs, BK);
-        }
-        for (int i = 0; i < loadIterationsB; i++)
-        {
-            loadAndSplit<float4, float>(B, N, innerRowB, i * rowStrideB, innerColB, Bs, dBs, BN);
-        }
+        loadFromGmem<BM, BN, BK>(N, K, A, B, As, Bs, innerRowA, innerColA, rowStrideA,
+            innerRowB, innerColB, rowStrideB); 
 
         __syncthreads();
+
+        warpMatmul<BM, BN, BK, WM, WN, WMITER, WNITER, WSUBM, WSUBN, TM, TN>(regM, regN,
+            threadResults, As, Bs, warpRow, warpCol, threadRowInWarp, threadColInWarp);
 
         // advance blocktile
         A += BK;
         B += BK * N;
-
-        // start of data belonging to respective warp
-        int warpOffsetA = warpRow * WM * BK;
-        int warpOffsetB = warpCol * WN;
-        
-        // Warning: if this is removed and the compiler unrolls this loop, register usage for this kernel is too high
-        // and it can't be launched
-        #pragma unroll 1
-        for (int chunk = 0; chunk < CHUNK_K; chunk++)
-        {   
-            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
-            {
-                wmma::load_matrix_sync(bFrag[tileCol], Bs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
-                wmma::load_matrix_sync(dbFrag[tileCol], dBs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
-            }
-            // calculate mmul
-            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
-            {
-                wmma::load_matrix_sync(aFrag, As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
-                wmma::load_matrix_sync(daFrag, dAs + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
-                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
-                {
-                    wmma::fill_fragment(tmpFrag, 0.0f);
-                    wmma::mma_sync(tmpFrag, aFrag, bFrag[tileCol], tmpFrag);
-
-                    // accumulate outside tensor cores to avoid RZ
-                    for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
-                    {
-                        cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
-                    }
-                    
-                    // matrices for error correction can be directly accumulated in the tensor core
-                    wmma::mma_sync(dcFrag[tileRow][tileCol], daFrag, bFrag[tileCol], dcFrag[tileRow][tileCol]);
-                    wmma::mma_sync(dcFrag[tileRow][tileCol], aFrag, dbFrag[tileCol], dcFrag[tileRow][tileCol]);
-                }
-            }
-        }
-
         __syncthreads();
     }
 
     // Store results back to C matrix
-    float *warpC = &C[warpRow * WM * N + warpCol * WN];
-    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    for (int wSubRowIdx = 0; wSubRowIdx < WMITER; wSubRowIdx++)
     {
-        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
-        {   
-            // perform merge according to Ootomo paper
-            for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+        for (int wSubColIdx = 0; wSubColIdx < WNITER; wSubColIdx++)
+        {
+            int C_Offset = (wSubRowIdx * WSUBM) * N + wSubColIdx * WSUBN;
+            for (int resIdxM = 0; resIdxM < TM; resIdxM++)
             {
-                cFrag[tileRow][tileCol].x[i] += dcFrag[tileRow][tileCol].x[i] / 2048.0f;
-            }
+                for (int resIdxN = 0; resIdxN < TN; resIdxN += 4)
+                {
+                    int i = (wSubRowIdx * TM + resIdxM) * (WNITER * TN) + 
+                        wSubColIdx * TN + resIdxN;
+                    float4 tmp = {threadResults[i], threadResults[i + 1], threadResults[i + 2], threadResults[i + 3]};
 
-            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+                    // vectorized store to GMEM
+                    reinterpret_cast<float4 *>(
+                        &C[C_Offset + (threadRowInWarp * TM + resIdxM) * N + 
+                           threadColInWarp * TN + resIdxN])[0] = tmp;
+                }
+            }
         }
-        warpC += WMMA_M * N;
     }
 }
 
