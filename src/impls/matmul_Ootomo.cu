@@ -879,7 +879,6 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
 
     // these identifiers are just outside the if because otherwise, compilation does not work
     float *deviceA[2], *deviceB[2];
-    half *deviceAHalf[4], *deviceBHalf[4];
     // {AB, dAB, AdB, dAdB}
     float *deviceC[4];
     if constexpr(version == 0)
@@ -892,39 +891,19 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
         for(int i = 0; i < 4; i++)
             PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CElems * sizeof(float)));
     }
-    else if constexpr(version == 1)
-    {
-        for(int i = 0; i < 4; i++)
-        {
-            PRINT_ON_ERROR(cudaMalloc(&deviceAHalf[i], AElems * sizeof(half)));
-            PRINT_ON_ERROR(cudaMalloc(&deviceBHalf[i], BElems * sizeof(half)));
-        }
-        //for(int i = 0; i < 4; i++)
-            //PRINT_ON_ERROR(cudaMalloc(&deviceC[i], CElems * sizeof(float)));
-    }
 
     PROFILE_SEGMENTS_SWITCH("memcpy host2device");
     PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, AElems * sizeof(double), cudaMemcpyHostToDevice));
     PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BElems * sizeof(double), cudaMemcpyHostToDevice));
 
-    if constexpr(version == 0 || version == 1)
+    if constexpr(version == 0)
     {
         PROFILE_SEGMENTS_SWITCH("split");
         int threadsPerBlock = 256;
-        if constexpr(version == 0)
-        {
-            split_cuda<double, float><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
-            PRINT_ON_ERROR(cudaGetLastError());
-            split_cuda<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
-            PRINT_ON_ERROR(cudaGetLastError());
-        } 
-        else 
-        {
-            split4_cuda<<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceAHalf[0], deviceAHalf[1], deviceAHalf[2], deviceAHalf[3]);
-            PRINT_ON_ERROR(cudaGetLastError());
-            split4_cuda<<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceBHalf[0], deviceBHalf[1], deviceBHalf[2], deviceBHalf[3]);
-            PRINT_ON_ERROR(cudaGetLastError());
-        }
+        split_cuda<double, float><<<M * K / threadsPerBlock, threadsPerBlock>>>(deviceAFull, deviceA[0], deviceA[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
+        split_cuda<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1]);
+        PRINT_ON_ERROR(cudaGetLastError());
 
         PRINT_ON_ERROR(cudaDeviceSynchronize());
     }
@@ -995,16 +974,6 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
         for(int i = 0; i < 4; i++)
             PRINT_ON_ERROR(cudaFree(deviceC[i]));
     }
-    else if constexpr(version == 1)
-    {
-        for(int i = 0; i < 4; i++)
-        {
-            PRINT_ON_ERROR(cudaFree(deviceAHalf[i]));
-            PRINT_ON_ERROR(cudaFree(deviceBHalf[i]));
-        }
-        //for(int i = 0; i < 4; i++)
-            //PRINT_ON_ERROR(cudaFree(deviceC[i]));
-    }
 
     PROFILE_SEGMENT_FUNCTION_END();
 }
@@ -1028,27 +997,5 @@ flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, int M, int 
 {
     matmul_Ootomo_double<0>(A, B, C, M, K, N);
     flop_counts counts = {24L*M*K*N, 4L*(2L*M*K + 2L*K*N + 3L*N*M), 2L*M*K + 2L*K*N + 5L*N*M};
-    return counts;
-}
-
-
-/**
- * flops16:
- * 4*3*(2*M*K*N) (4 fp32 matmuls each of which is 3 fp16)
- * 
- * flops32:
- * 4 *            (4 fp32 matmuls)
- * (2*M*K + 2*K*N (splitting A and B)
- * + N*M          (accumulating outside tensor cores)
- * + 2*N*M)       (merging into C)
- * 
- * flops64:
- * 2*M*K flops64 + 2*K*N flops64 (splitting A and B)
- * + 5*N*M flops64               (merging with merge_cuda)
- */
-flop_counts matmul_Ootomo_double_v1(double *A, double *B, double *C, int M, int K, int N)
-{
-    matmul_Ootomo_double<1>(A, B, C, M, K, N);
-    flop_counts counts = {};//{24L*M*K*N, 4L*(2L*M*K + 2L*K*N + 3L*N*M), 2L*M*K + 2L*K*N + 5L*N*M};
     return counts;
 }
