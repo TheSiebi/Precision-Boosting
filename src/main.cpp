@@ -82,7 +82,7 @@ matmul_variant<float> matmulVariants32[] =
         .highestPerforming = true,
     },
     {
-        .function = matmul_cuda<float, float, 0>,
+        .function = matmul_cuda<float, float, 0, false>,
         .name = "matmul_cuda_float v0",
         .description = "CUDA core fp32 matrix multiplication with warptiling",
     },
@@ -140,25 +140,25 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = true,
     },
     {
-        .function = matmul_cuda<double, double, 0>,
+        .function = matmul_cuda<double, double, 0, true>,
         .name = "matmul_cuda v0",
         .description = "straightforward triple for loop implementation running on the GPU",
         .highestPerforming = false,
     },
     {
-        .function = matmul_cuda<double, double, 1>,
+        .function = matmul_cuda<double, double, 1, true>,
         .name = "matmul_cuda v1",
         .description = "straightforward triple for loop implementation running on the GPU",
         .highestPerforming = false,
     },
     {
-        .function = matmul_cuda<double, double, 2>,
+        .function = matmul_cuda<double, double, 2, true>,
         .name = "matmul_cuda v2",
         .description = "straightforward triple for loop implementation running on the GPU",
         .highestPerforming = false,
     },
     {
-        .function = matmul_cuda<double, double, 3>,
+        .function = matmul_cuda<double, double, 3, true>,
         .name = "matmul_cuda v3",
         .description = "straightforward triple for loop implementation running on the GPU",
         .highestPerforming = false,

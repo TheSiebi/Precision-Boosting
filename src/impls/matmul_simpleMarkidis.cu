@@ -84,7 +84,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < 4; i++)
     {
-        matmul<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
+        matmulTensorCores<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
@@ -217,7 +217,7 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
         int aIndex = mergePattern[i].first * M * K;
         int bIndex = mergePattern[i].second * K * N;
         int cIndex = i * M * N;
-        matmul<half, float, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        matmulTensorCores<half, float, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
@@ -365,7 +365,7 @@ flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C,
         int aIndex = mergePattern[i].first * M * K;
         int bIndex = mergePattern[i].second * K * N;
         int cIndex = i * M * N;
-        matmul<double, double, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        matmulTensorCores<double, double, 3>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         double scale = std::pow(2048, mergePattern[i].first) * std::pow(2048, mergePattern[i].second);
         divide_cuda<double><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, scale);
     }
