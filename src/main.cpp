@@ -77,8 +77,9 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_cuda<float, float, 1, false>,
-        .name = "matmul_cuda_float v0",
+        .name = "matmul_cuda v1",
         .description = "CUDA core fp32 matrix multiplication with warptiling",
+        .highestPerforming = true,
     },
     {
         .function = matmul_cuBLAS32,
@@ -108,7 +109,6 @@ matmul_variant<double> matmulVariants64[] =
         .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",
         .highestPerforming = true,
     },
-#if SM_VERSION >= 800
     {
         .function = matmul_simpleMarkidis_double<0>,
         .name = "Simple Markidis double v0",
@@ -121,6 +121,13 @@ matmul_variant<double> matmulVariants64[] =
         .description = "Split 4, 16 multiply",
         .highestPerforming = true,      
     },
+    {
+        .function = matmul_cuda<double, double, 1, false>,
+        .name = "matmul_cuda v1",
+        .description = "double matmul using CUDA cores",
+        .highestPerforming = true,
+    },
+#if SM_VERSION >= 800
     {
         .function = matmul_simpleMarkidis_double_double<0>,
         .name = "Simple Markidis double double v0",
@@ -135,25 +142,25 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_cuda<double, double, 0, true>,
-        .name = "matmul_cuda v0",
+        .name = "matmul_tensor v0",
         .description = "simple tensor matmul",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 1, true>,
-        .name = "matmul_cuda v1",
+        .name = "matmul_tensor v1",
         .description = "multiple warps per block",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 2, true>,
-        .name = "matmul_cuda v2",
+        .name = "matmul_tensor v2",
         .description = "with shared memory",
         .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 3, true>,
-        .name = "matmul_cuda v3",
+        .name = "matmul_tensor v3",
         .description = "with shared memory",
         .highestPerforming = false,
     }
