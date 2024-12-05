@@ -24,6 +24,7 @@ struct matmul_variant
     MatMul<T> function;
     const char *name;
     const char *description;
+    const bool highestPerforming;
 };
 
 typedef void (*Split)(const double *A, void *A16, void *dA16, int M, int N);

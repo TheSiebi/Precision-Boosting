@@ -50,9 +50,12 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, 
     mean_timings = np.mean(timings_ms)
 
     # Perform Shapiro-Wilk Test
-    p_value = stats.shapiro(timings_ms)[1]
-    is_normal = p_value > 0.05
     n = len(timings_ms)
+    if (n >= 3):
+        p_value = stats.shapiro(timings_ms)[1]
+        is_normal = p_value > 0.05
+    else:
+        is_normal = False # too small sample size for doing shapiro-wilk test
 
     # Calculate 95% confidence interval
     if is_normal:
@@ -248,10 +251,12 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
     # Compute performance for each run
     for i in range(len(data)):
         d = data[i]
-        runs = d['runs']
-        # Skip if residuals not present
-        if not('residuals' in runs[0]):
+        runs = [run for run in d['runs'] if 'residuals' in run]
+        
+        # If no runs have 'residuals', skip
+        if not runs:
             continue
+
         avg_residual = [np.mean(np.array(run['residuals'])) for run in runs]
         sizes = [run['N'] for run in runs]
         residuals = [avg_residual[i] for i in range(len(runs))]
@@ -270,7 +275,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
 
     plt.title("Precision Comparison" + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
     plt.legend()
-    plt.gca().set_ylim(bottom=0)
+    #plt.gca().set_ylim(bottom=0)
 
     output_dir = input_folder
     output_file = "prec_comparison.png"

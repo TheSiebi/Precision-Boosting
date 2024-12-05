@@ -25,51 +25,61 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_simpleMarkidis<0>,
         .name = "Simple Markidis v0",
         .description = "Simple markidis with simple cuda matmul",
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<1>,
         .name = "Simple Markidis v1",
         .description = "Simple markidis with simple tensor matmul",
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<2>,
         .name = "Simple Markidis v2",
         .description = "Simple markidis with multiple warps per block",
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<3>,
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<4>,
         .name = "Simple Markidis v4",
         .description = "Simple markidis with shared memory",
+        .highestPerforming = true,
     },
     {
         .function = matmul_markidis,
         .name = "Markidis",
         .description = "Markidis in a single cuda kernel",
+        .highestPerforming = false,
     },
     {
         .function = matmul_basic_Ootomo_v0,
         .name = "Basic Ootomo v0",
         .description = "Very basic Ootomo using CUDA",
+        .highestPerforming = false,
     },
     {
         .function = matmul_Ootomo_v0,
         .name = "Ootomo v0",
         .description = "Ootomo with separate split, merge and matmul kernels (no accumulation outside tensor cores)",
+        .highestPerforming = false,
     },
     {
         .function = matmul_Ootomo_v1,
         .name = "Ootomo v1",
         .description = "Ootomo algorithm as described by Code3 in the paper",
+        .highestPerforming = false,
     },
     {
         .function = matmul_Ootomo_v2,
         .name = "Ootomo v2",
         .description = "Same as Ootomo_v1 but with better data reuse",
+        .highestPerforming = true,
     },
     {
         .function = matmul_cuda<float, float, 0>,
@@ -80,6 +90,7 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_cuBLAS32,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
+        .highestPerforming = true,
     }
 };
 
@@ -89,47 +100,68 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuBLAS64,
         .name = "matmul_cuBLAS",
         .description = "cuBLAS",
+        .highestPerforming = true,
     },
     {
         .function = matmul_Ozaki_v0,
         .name = "matmul_Ozaki v0",
         .description = "Ozaki FP64 using FP32 on CPU",
+        .highestPerforming = false,
     },
     {
         .function = matmul_Ootomo_double_v0,
         .name = "Ootomo double v0",
-        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",        
+        .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",
+        .highestPerforming = true,
     },
+#if SM_VERSION >= 800
     {
         .function = matmul_simpleMarkidis_double<0>,
         .name = "Simple Markidis double v0",
-        .description = "Split 3, 9 multiply",        
+        .description = "Split 3, 9 multiply",
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis_double<1>,
         .name = "Simple Markidis double v1",
-        .description = "Split 4, 16 multiply",        
+        .description = "Split 4, 16 multiply",
+        .highestPerforming = true,      
     },
-#if SM_VERSION >= 800
+    {
+        .function = matmul_simpleMarkidis_double_double<0>,
+        .name = "Simple Markidis double double v0",
+        .description = "Split 3, 9 multiply",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_simpleMarkidis_double_double<1>,
+        .name = "Simple Markidis double double v1",
+        .description = "Split 4, 16 multiply",
+        .highestPerforming = true,
+    },
     {
         .function = matmul_cuda<double, double, 0>,
         .name = "matmul_cuda v0",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 1>,
         .name = "matmul_cuda v1",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 2>,
         .name = "matmul_cuda v2",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .highestPerforming = false,
     },
     {
         .function = matmul_cuda<double, double, 3>,
         .name = "matmul_cuda v3",
         .description = "straightforward triple for loop implementation running on the GPU",
+        .highestPerforming = false,
     }
 #endif
 };
@@ -381,14 +413,28 @@ int main(int argc, char *argv[])
 
         if (strcmp(argv[1], "32") == 0)
         {
-            std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
+            //std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
+            std::vector<int> timeIndices32;
+            for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++) {
+                if (matmulVariants32[i].highestPerforming) {
+                    timeIndices32.push_back(i);
+                }
+            }
+
             for(const int value : timeIndices32)
             {
                 timeFunction(&matmulVariants32[value], argv[3], rng);
                 rng.state = seed;
             }
         } else if (strcmp(argv[1], "64") == 0) {
-            std::vector<int> timeIndices64 = {};
+            //std::vector<int> timeIndices64 = {};
+            std::vector<int> timeIndices64;
+            for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++) {
+                if (matmulVariants64[i].highestPerforming) {
+                    timeIndices64.push_back(i);
+                }
+            }
+
             for(const int value : timeIndices64)
             {
                 timeFunction(&matmulVariants64[value], argv[3], rng);
