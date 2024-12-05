@@ -37,6 +37,7 @@ flop_counts matmul_cuBLAS32(float *A, float *B, float *C, int M, int K, int N);
 flop_counts matmul_cuBLAS64(double *A, double *B, double *C, int M, int K, int N);
 
 // Ozaki paper uses A [m, n] and B [n, p] matrices
-flop_counts matmul_Ozaki_v0(double *a, double *b, double *c, int m, int n, int p);
+template<int version>
+flop_counts matmul_ozaki(double *a, double *b, double *c, int m, int n, int p);
 
 #endif // MATMUL_H

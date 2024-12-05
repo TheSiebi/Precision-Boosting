@@ -21,7 +21,7 @@ OBJ_FILES+=build/matmul_basic_Ootomo_v0.o
 OBJ_FILES+=build/matmul_Ootomo.o
 OBJ_FILES+=build/matmul_cuda.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o
 OBJ_FILES+=build/matmul_cuBLAS.o
-OBJ_FILES+=build/matmul_Ozaki_v0.o
+OBJ_FILES+=build/matmul_ozaki.o
 
 
 .PHONY: build
@@ -84,8 +84,8 @@ build/merge_accumulate_v0.o: src/impls/merge_accumulate_v0.cu
 build/matmul_cuBLAS.o: src/impls/matmul_cuBLAS.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuBLAS.cu -o $@
 
-build/matmul_Ozaki_v0.o: src/impls/matmul_Ozaki_v0.cu
-	nvcc $(CUDA_FLAGS) -c src/impls/matmul_Ozaki_v0.cu -o $@
+build/matmul_ozaki.o: src/impls/matmul_ozaki.cu
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_ozaki.cu -o $@
 
 run:
 	./build/main
