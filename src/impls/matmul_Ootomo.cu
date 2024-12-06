@@ -144,7 +144,7 @@ __global__ void merge_cuda(trgtType *C, srcType *AB, srcType *dAB, srcType *AdB,
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if constexpr(useLastTerm)
-        C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / factor + (trgtType) dAdB[i] / (factor * factor);
+        C[i] = (trgtType) AB[i] + (((trgtType) dAB[i] + (trgtType) AdB[i]) / factor + (trgtType) dAdB[i] / (factor * factor));
     else 
         C[i] = (trgtType) AB[i] + ((trgtType) dAB[i] + (trgtType) AdB[i]) / factor;
 }
