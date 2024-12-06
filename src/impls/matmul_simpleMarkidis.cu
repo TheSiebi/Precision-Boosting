@@ -106,6 +106,15 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     return counts;
 }
 
+template<typename Type>
+static __global__ 
+void divide_cuda(Type *C, int N, double scale)
+{
+    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    if(i < N)
+        C[i] /= scale;
+}
+
 template flop_counts matmul_simpleMarkidis<0>(float *A, float *B, float *C, int M, int K, int N);
 template flop_counts matmul_simpleMarkidis<1>(float *A, float *B, float *C, int M, int K, int N);
 template flop_counts matmul_simpleMarkidis<2>(float *A, float *B, float *C, int M, int K, int N);
@@ -113,7 +122,7 @@ template flop_counts matmul_simpleMarkidis<3>(float *A, float *B, float *C, int 
 
 template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M, int K, int N,
-                                        std::pair<int, int> mergePattern[mergeCount]) 
+                                        std::pair<int, int> mergePattern[mergeCount], double scale) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -149,9 +158,9 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
 
     PROFILE_SEGMENTS_SWITCH("split");
 
-    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, 1.0f);
+    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, 1.0f);
+    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale);
     PRINT_ON_ERROR(cudaGetLastError());
 
     PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -166,6 +175,10 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
             matmulTensorCores<mulInputType, mulOutputType, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         else 
             matmulCUDACores<mulInputType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        
+        double factor = std::pow(scale, mergePattern[i].first) * std::pow(scale, mergePattern[i].second);
+        if (factor > 1.0)
+            divide_cuda<mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, factor);
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
@@ -207,7 +220,7 @@ template<>
 flop_counts matmul_simpleMarkidis_double<0>(double *A, double *B, double *C, int M, int K, int N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_simpleMarkidis_double<3, 9, half, float, true>(A, B, C, M, K, N, merges);
+    return matmul_simpleMarkidis_double<3, 9, half, float, true>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
@@ -216,30 +229,21 @@ flop_counts matmul_simpleMarkidis_double<1>(double *A, double *B, double *C, int
     std::pair<int, int> merges[16];
     for(int i = 0; i < 16; i++)
         merges[i] = {i/4, i%4};
-    return matmul_simpleMarkidis_double<4, 16, half, float, true>(A, B, C, M, K, N, merges);
+    return matmul_simpleMarkidis_double<4, 16, half, float, true>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<2>(double *A, double *B, double *C, int M, int K, int N)
 {
     std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
-    return matmul_simpleMarkidis_double<2, 4, float, float, false>(A, B, C, M, K, N, merges);
+    return matmul_simpleMarkidis_double<2, 4, float, float, false>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<3>(double *A, double *B, double *C, int M, int K, int N)
 {
     std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
-    return matmul_simpleMarkidis_double<2, 4, float, double, false>(A, B, C, M, K, N, merges);
-}
-
-template<typename Type>
-static __global__ 
-void divide_cuda(Type *C, int N, double scale)
-{
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
-    if(i < N)
-        C[i] /= scale;
+    return matmul_simpleMarkidis_double<2, 4, float, double, false>(A, B, C, M, K, N, merges, 1 << 24);
 }
 
 #if SM_VERSION >= 800
