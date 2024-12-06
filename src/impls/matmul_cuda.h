@@ -1,3 +1,6 @@
+#ifndef MATMUL_CUDA_H
+#define MATMUL_CUDA_H
+
 #include <cuda_fp16.h>
 
 //NOTE(max): this is constant for now, if we have architectures that have
@@ -40,3 +43,4 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, 
 template<typename InputType, typename OutputType, int version>
 void matmulCUDACores(InputType *A, InputType *B, OutputType *C, int M, int K, int N);
 
+#endif // MATMUL_CUDA_H

@@ -48,6 +48,3 @@ __global__ void split_4_tree(double *A, half *dA_high, half *dA_middleUp, half *
     //double reconstructed = ((double)highSplit.x + (double)highSplit.y) + ((double)lowSplit.x + (double)lowSplit.y);
     //assert(fabs(reconstructed - A[i]) < 1e-9);
 }
-
-
-
