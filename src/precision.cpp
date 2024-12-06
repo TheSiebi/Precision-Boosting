@@ -96,13 +96,13 @@ template<class T>
 double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index) {
     size_t i = index / N;
     size_t j = index % N;
-    double c_ij = 0.0;
+    __float80 c_ij = 0.0;
     for (size_t k = 0; k < K; k++) {
-        double a_ik = (double) A[i*K + k];
-        double b_kj = (double) B[k*N + j];
+        __float80 a_ik = (__float80) A[i*K + k];
+        __float80 b_kj = (__float80) B[k*N + j];
         c_ij += a_ik * b_kj;
     }
-    return c_ij;
+    return (double) c_ij;
 }
 
 template int test_matmul_correctness_probabilistic<float>(LCG *rng, float *A, float *B, float *C, size_t M, size_t K, size_t N);

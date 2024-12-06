@@ -274,3 +274,98 @@ void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size_a,
     }
     gen_floats_exp_rand(rng, other, other_size, min_exp, max_exp);
 }
+
+
+void fill_matrices_float(struct LCG *rng, int input_type, float *A, float *B, int size_a, int size_b) {
+    switch (input_type) {
+        case 0:
+            gen_floats_urand(rng, A, size_a);
+            gen_floats_urand(rng, B, size_a);
+            break;
+        case 1:
+            fill_matrices_ootomo_type1(rng, A, B, size_a, size_b);
+            break;
+        case 2:
+            fill_matrices_ootomo_type2(rng, A, B, size_a, size_b);
+            break;
+        case 3:
+            fill_matrices_ootomo_type3(rng, A, B, size_a, size_b);
+            break;
+        case 4:
+            fill_matrices_ootomo_type4(rng, A, B, size_a, size_b);
+            break;
+        default:
+            assert(false);
+    }
+}
+void fill_matrices_double(struct LCG *rng, int input_type, double *A, double *B, int size_a, int size_b) {
+    switch (input_type) {
+        case 0:
+            gen_doubles_urand(rng, A, size_a);
+            gen_doubles_urand(rng, B, size_b);
+            break;
+        case 1:
+            gen_doubles_exp_rand(rng, A, size_a, -15, 14);
+            gen_doubles_exp_rand(rng, B, size_b, -15, 14);
+            break;
+        case 2:
+            {
+                // One of A or B is exp_rand(-15, 14), the other is exp_rand(-100, -35)
+                bool coinflip = next_bool(rng, 0.5);
+                double *biig_exp = coinflip ? A : B;
+                double *smol_exp = coinflip ? B : A;
+                int big_size = coinflip ? size_a : size_b;
+                int smol_size = coinflip ? size_b : size_a;
+                gen_doubles_exp_rand(rng, biig_exp, big_size, -15, 14);
+                gen_doubles_exp_rand(rng, smol_exp, smol_size, -100, -35);
+            }
+            break;
+        case 3:
+            // Both A and B are exp_rand(-35, -15)
+            gen_doubles_exp_rand(rng, A, size_a, -35, -15);
+            gen_doubles_exp_rand(rng, B, size_b, -35, -15);
+            break;
+        case 4:
+            // At least one of A or B is (-100, -35)
+            // The other can be any of exp_rand(-15, 14), exp_rand(-35, -15) or exp_rand(-100, -35)
+            {
+                uint32_t choice = next_below(rng, 6);
+                bool coinflip = (choice & 1) != 0;
+                int other_type = choice >> 1;
+                assert(0 <= other_type && other_type < 3);
+
+                double *chosen = coinflip ? A : B;
+                int chosen_size = coinflip ? size_a : size_b;
+                gen_doubles_exp_rand(rng, chosen, chosen_size, -100, -35);
+
+                double *other = coinflip ? B : A;
+                int other_size = coinflip ? size_b : size_a;
+                int min_exp, max_exp;
+                if (other_type == 0) {
+                    min_exp = -15; max_exp = 14;
+                } else if (other_type == 1) {
+                    min_exp = -35; max_exp = -15;
+                } else {
+                    assert(other_type == 2);
+                    min_exp = -100; max_exp = -35;
+                }
+                gen_doubles_exp_rand(rng, other, other_size, min_exp, max_exp);
+            }
+            break;
+        default:
+            assert(false);
+    }
+}
+template<class T>
+void fill_matrices(struct LCG *rng, int input_type, T *A, T *B, int size_a, int size_b) {
+    if constexpr (std::is_same<T, float>::value) {
+        fill_matrices_float(rng, input_type, reinterpret_cast<float*>(A), reinterpret_cast<float*>(B), size_a, size_b);
+    } else if constexpr (std::is_same<T, double>::value) {
+        fill_matrices_double(rng, input_type, reinterpret_cast<double*>(A), reinterpret_cast<double*>(B), size_a, size_b);
+    } else {
+        assert(false);
+    }
+}
+
+template void fill_matrices<float> (struct LCG *rng, int input_type, float *A, float *B, int size_a, int size_b);
+template void fill_matrices<double>(struct LCG *rng, int input_type, double *A, double *B, int size_a, int size_b);

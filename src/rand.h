@@ -115,4 +115,10 @@ void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size_a,
 void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size_a, int size_b);
 void fill_matrices_ootomo_type4(struct LCG *rng, float *A, float *B, int size_a, int size_b);
 
+template<class T>
+void fill_matrices(struct LCG *rng, int input_type, T *A, T *B, int size_a, int size_b);
+
+extern template void fill_matrices<float> (struct LCG *rng, int input_type, float *A, float *B, int size_a, int size_b);
+extern template void fill_matrices<double>(struct LCG *rng, int input_type, double *A, double *B, int size_a, int size_b);
+
 #endif // RAND_H

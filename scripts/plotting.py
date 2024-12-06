@@ -243,49 +243,54 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         data: JSON data containing precision information
         input_folder: Name of input folder at timings
     """
-    plot_setup(ylabel="Relative residual", scientific=True)
-    plt.yscale('log', base=10)
-    # -- Comparison Plot specific setup --
-    #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
-    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
-    plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
-    all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
-    plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
+    unique_input_types = set([m['input_type'] for d in data for run in d['runs'] if 'precMs' in run for m in run['precMs']])
 
     # Compute performance for each run
-    for i in range(len(data)):
-        d = data[i]
-        runs = [run for run in d['runs'] if 'residuals' in run]
-        
-        # If no runs have 'residuals', skip
-        if not runs:
-            continue
+    for input_type in unique_input_types:
+        plot_setup(ylabel="Relative residual", scientific=True)
+        plt.yscale('log', base=10)
+        # -- Comparison Plot specific setup --
+        #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
+        line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+        plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
+        all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+        plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
 
-        avg_residual = [np.mean(np.array(run['residuals'])) for run in runs]
-        sizes = [run['N'] for run in runs]
-        residuals = [avg_residual[i] for i in range(len(runs))]
-        label = d['meta']['function name']
-        # Add compiler info if contained in data
-        if 'compiler' in d['meta']:
-            label += f" ({d['meta']['compiler']})"
-        if 'flags' in d['meta']:
-            label += f" {d['meta']['flags']}"
-        plt.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
+        for i in range(len(data)):
+            d = data[i]
+            runs = [run for run in d['runs'] if 'precMs' in run]
+            
+            # If no runs have 'precMs', skip
+            if not runs:
+                continue
+            
+            all_run_residuals = [m['residuals'] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
 
-    # Only show gpu if all data is from the same gpu
-    title_suffix = ""
-    if all(d['meta']['gpu model'] == data[0]['meta']['gpu model'] for d in data):
-        title_suffix = f" on {data[0]['meta']['gpu model']}"
+            avg_residual = [np.mean(np.array(run_residual)) for run_residual in all_run_residuals]
+            sizes = [run['N'] for run in runs]
+            residuals = [avg_residual[i] for i in range(len(runs))]
+            label = d['meta']['function name']
+            # Add compiler info if contained in data
+            if 'compiler' in d['meta']:
+                label += f" ({d['meta']['compiler']})"
+            if 'flags' in d['meta']:
+                label += f" {d['meta']['flags']}"
+            plt.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
 
-    plt.title("Precision Comparison" + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
-    plt.legend()
-    #plt.gca().set_ylim(bottom=0)
+        # Only show gpu if all data is from the same gpu
+        title_suffix = ""
+        if all(d['meta']['gpu model'] == data[0]['meta']['gpu model'] for d in data):
+            title_suffix = f" on {data[0]['meta']['gpu model']}"
 
-    output_dir = input_folder
-    output_file = "prec_comparison.png"
-    print(output_dir)
-    plt.savefig(os.path.join(output_dir, output_file))
-    plt.close()
+        plt.title("Type " + str(input_type) + " Precision Comparison" + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
+        plt.legend()
+        #plt.gca().set_ylim(bottom=0)
+
+        output_dir = input_folder
+        output_file = "prec_comparison_type_" + str(input_type) + ".png"
+        print(output_dir)
+        plt.savefig(os.path.join(output_dir, output_file))
+        plt.close()
 
 
 # def plot_histogram_qq_grid(runs, input_folder, file_prefix, num_rows=3):

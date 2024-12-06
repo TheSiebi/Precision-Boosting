@@ -65,13 +65,19 @@ struct run
     // Theoretical, mathematical number of flops
     long math_flops;
     double *timings;
-    double *residuals;
+    struct precisionMeasurement *precMs;
 };
 
 struct measurement
 {
     struct measurementConfiguration configuration;
     struct run *runs;
+};
+
+struct precisionMeasurement
+{
+    int input_type;
+    double *residuals;
 };
 
 template<class T>
