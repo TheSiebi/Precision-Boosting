@@ -43,7 +43,7 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_simpleMarkidis<3>,
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_markidis,
