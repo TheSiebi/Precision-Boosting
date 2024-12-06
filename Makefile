@@ -19,7 +19,7 @@ OBJ_FILES+=build/matmul_simpleMarkidis.o
 OBJ_FILES+=build/matmul_markidis.o
 OBJ_FILES+=build/matmul_basic_Ootomo_v0.o
 OBJ_FILES+=build/matmul_Ootomo.o
-OBJ_FILES+=build/matmul_cuda.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o
+OBJ_FILES+=build/matmul_cuda.o build/split_v0.o build/merge_accumulate_v0.o build/matmul_reference.o build/split_merge_cuda.o
 OBJ_FILES+=build/matmul_cuBLAS.o
 OBJ_FILES+=build/matmul_ozaki.o
 
@@ -80,6 +80,9 @@ build/split_v0.o: src/impls/split_v0.cu
 
 build/merge_accumulate_v0.o: src/impls/merge_accumulate_v0.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/merge_accumulate_v0.cu -o $@
+
+build/split_merge_cuda.o: src/impls/split_merge_cuda.cu
+	nvcc $(CUDA_FLAGS) -c src/impls/split_merge_cuda.cu -o $@
 
 build/matmul_cuBLAS.o: src/impls/matmul_cuBLAS.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_cuBLAS.cu -o $@

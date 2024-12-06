@@ -9,32 +9,11 @@
 #include "../cuda_utils.h"
 #include "../matmul.h"
 #include "../profiler.h"
+#include "./split_merge_cuda.h"
 
 #include "../timer.h"
 
 #include "matmul_cuda.h"
-
-static __global__ 
-void split_cuda(float *A, half *A0, half *A1, int N)
-{
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
-    if(i < N)
-    {
-        float value = A[i];
-        half mainPart = (half)value;
-        A0[i] = mainPart;
-        A1[i] = (half)(value - (float)mainPart);
-    }
-}
-
-static __global__ 
-void merge_cuda(float *C0, float *C1, float *C2, float *C3, float *C, int N)
-{
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
-    if(i < N)
-        C[i] = C0[i] + (C1[i] + (C2[i] + C3[i]));
-}
-
 
 template<int version>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, int N) 
@@ -74,9 +53,9 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
 
     PROFILE_SEGMENTS_SWITCH("split");
 
-    split_cuda<<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA[0], deviceA[1], M * K);
+    split_2<float, half><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA[0], deviceA[1], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_cuda<<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB[0], deviceB[1], K * N);
+    split_2<float, half><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB[0], deviceB[1], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
 
     PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -89,8 +68,8 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, int M, int K, in
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("merge");
-    merge_cuda<<<DivRoundUp(M*N, 256), 256>>>
-              (deviceC[0], deviceC[1], deviceC[2], deviceC[3], deviceCMerged, M*N);
+    merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
+              (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
