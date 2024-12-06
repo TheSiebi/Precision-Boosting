@@ -132,9 +132,9 @@ template flop_counts matmul_simpleMarkidis<1>(float *A, float *B, float *C, int 
 template flop_counts matmul_simpleMarkidis<2>(float *A, float *B, float *C, int M, int K, int N);
 template flop_counts matmul_simpleMarkidis<3>(float *A, float *B, float *C, int M, int K, int N);
 
-template<int splitCount>
+template<int splitCount, typename trgtType>
 static __global__ 
-void split_cuda_double(double *A, half *ASplit, int N)
+void split_cuda_double(double *A, trgtType *ASplit, int N)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
@@ -143,16 +143,16 @@ void split_cuda_double(double *A, half *ASplit, int N)
         #pragma unroll
         for(int j = 0; j < splitCount; j++)
         {
-            half mainPart = (half)residual;
+            trgtType mainPart = (trgtType)residual;
             ASplit[j*N+i] = mainPart;
             residual -= (double)mainPart;
         }
     }
 }
 
-template<int splitCount>
+template<int splitCount, typename srcType>
 static __global__ 
-void merge_cuda_double(float *CSplit, double *C, int N)
+void merge_cuda_double(srcType *CSplit, double *C, int N)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
@@ -165,7 +165,7 @@ void merge_cuda_double(float *CSplit, double *C, int N)
     }
 }
 
-template<int splitCount, int mergeCount>
+template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M, int K, int N,
                                         std::pair<int, int> mergePattern[mergeCount]) 
 {
@@ -175,17 +175,17 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
 
     PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
 
-    size_t ASizeH = M * K * sizeof(half);
+    size_t ASizeH = M * K * sizeof(mulInputType);
     size_t ASizeD = M * K * sizeof(double);
-    size_t BSizeH = K * N * sizeof(half);
+    size_t BSizeH = K * N * sizeof(mulInputType);
     size_t BSizeD = K * N * sizeof(double);
-    size_t CSizeF = M * N * sizeof(float);
+    size_t CSizeF = M * N * sizeof(mulOutputType);
     size_t CSizeD = M * N * sizeof(double);
     
     PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
-    half *deviceA, *deviceB;
-    float *deviceC;
+    mulInputType *deviceA, *deviceB;
+    mulOutputType *deviceC;
     double *deviceCMerged;
     double *deviceAFull, *deviceBFull;
     cudaGetLastError();
@@ -203,9 +203,9 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
 
     PROFILE_SEGMENTS_SWITCH("split");
 
-    split_cuda_double<splitCount><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K);
+    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_cuda_double<splitCount><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N);
+    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N);
     PRINT_ON_ERROR(cudaGetLastError());
 
     PRINT_ON_ERROR(cudaDeviceSynchronize());
@@ -216,12 +216,15 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, int M,
         int aIndex = mergePattern[i].first * M * K;
         int bIndex = mergePattern[i].second * K * N;
         int cIndex = i * M * N;
-        matmulTensorCores<half, float, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        if constexpr(useTensorCores)
+            matmulTensorCores<mulInputType, mulOutputType, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+        else 
+            matmulCUDACores<mulInputType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
     }
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
     PROFILE_SEGMENTS_SWITCH("merge");
-    merge_cuda_double<mergeCount><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
+    merge_cuda_double<mergeCount, mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     PRINT_ON_ERROR(cudaDeviceSynchronize());
 
@@ -258,7 +261,7 @@ template<>
 flop_counts matmul_simpleMarkidis_double<0>(double *A, double *B, double *C, int M, int K, int N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_simpleMarkidis_double<3, 9>(A, B, C, M, K, N, merges);
+    return matmul_simpleMarkidis_double<3, 9, half, float, true>(A, B, C, M, K, N, merges);
 }
 
 template<>
@@ -267,7 +270,21 @@ flop_counts matmul_simpleMarkidis_double<1>(double *A, double *B, double *C, int
     std::pair<int, int> merges[16];
     for(int i = 0; i < 16; i++)
         merges[i] = {i/4, i%4};
-    return matmul_simpleMarkidis_double<4, 16>(A, B, C, M, K, N, merges);
+    return matmul_simpleMarkidis_double<4, 16, half, float, true>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<2>(double *A, double *B, double *C, int M, int K, int N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, float, false>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<3>(double *A, double *B, double *C, int M, int K, int N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, double, false>(A, B, C, M, K, N, merges);
 }
 
 

@@ -122,6 +122,18 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = true,      
     },
     {
+        .function = matmul_simpleMarkidis_double<2>,
+        .name = "Simple Markidis double v2",
+        .description = "Split 2, 4 float multiply",
+        .highestPerforming = true,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<3>,
+        .name = "Simple Markidis double v3",
+        .description = "Split 2, 4 double multiply",
+        .highestPerforming = true,      
+    },
+    {
         .function = matmul_cuda<double, double, 1, false>,
         .name = "matmul_cuda v1",
         .description = "double matmul using CUDA cores",
