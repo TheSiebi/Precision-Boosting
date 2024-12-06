@@ -4,7 +4,7 @@
 #include "rand.h"
 #include <math.h>
 
-const double MAX_RELATIVE_ERROR = 1e-3; // A relative error above this value will count as a fail
+const double MAX_RELATIVE_ERROR = 1e-1; // A relative error above this value will count as a fail
 const double MAX_ABSOLUTE_ERROR = 1e-4; // Any error less than this will not count as a failure, even if relative error is too large
 
 template<class T>

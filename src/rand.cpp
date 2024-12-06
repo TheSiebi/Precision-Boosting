@@ -242,7 +242,7 @@ void fill_matrices_ootomo_type2(struct LCG *rng, float *A, float *B, int size_a,
     int big_size = coinflip ? size_a : size_b;
     int smol_size = coinflip ? size_b : size_a;
     gen_floats_exp_rand(rng, biig_exp, big_size, -15, 14);
-    gen_floats_exp_rand(rng, smol_exp, smol_size, -100, -35);
+    gen_floats_exp_rand(rng, smol_exp, smol_size, -35, -15);
 }
 void fill_matrices_ootomo_type3(struct LCG *rng, float *A, float *B, int size_a, int size_b) {
     // Both A and B are exp_rand(-35, -15)
@@ -317,7 +317,7 @@ void fill_matrices_double(struct LCG *rng, int input_type, double *A, double *B,
                 int big_size = coinflip ? size_a : size_b;
                 int smol_size = coinflip ? size_b : size_a;
                 gen_doubles_exp_rand(rng, biig_exp, big_size, -15, 14);
-                gen_doubles_exp_rand(rng, smol_exp, smol_size, -100, -35);
+                gen_doubles_exp_rand(rng, smol_exp, smol_size, -35, -15);
             }
             break;
         case 3:

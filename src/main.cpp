@@ -289,9 +289,9 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
     // Parameters
     // srand(time(NULL));
     const size_t RUNS = 5;
+    const size_t NUM_TYPES = 5;
     bool failed = false;
-    double relative_residual_sum = 0.0;
-    double absolute_residual_sum = 0.0;
+    double *residual_sums = (double*) calloc(NUM_TYPES, sizeof(double));
     for (size_t run = 0; run < RUNS; run++) {
         uint64_t starting_seed = rng->state;
         // Randomize matrix dimensions
@@ -302,55 +302,74 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 
         // Get matrices
         T *C = (T*) calloc(M * N,  sizeof(T));
-        auto [A, B, C_reference] = getMatrices<T>(M, K, N, "uniform", rng);
 
-        // Call function under test
-        function->function(A, B, C, M, K, N);
+        for (size_t input_type = 0; input_type < NUM_TYPES; input_type++) {
+            auto [A, B, C_reference] = getMatrices<T>(M, K, N, input_type, rng);
 
-        // Analyze result
-        int wrong = test_matmul_correctness_full(C, C_reference, M, N);
-        double absolute_residual = abs_residual(C, C_reference, M * N);
-        double relative_residual = rel_residual(C, C_reference, M * N);
-        absolute_residual_sum += absolute_residual;
-        relative_residual_sum += relative_residual;
+            // Call function under test
+            function->function(A, B, C, M, K, N);
 
-        if (wrong != -1) {
-            failed = true;
-            // Give a nice error message
-            double wrong_val = (double) C[wrong];
-            double ref_sol = C_reference[wrong];
-            double abs_err = abs(ref_sol - wrong_val);
-            double rel_err = abs_err / abs(ref_sol);
-            size_t row = wrong / N;
-            size_t col = wrong % N;
-
-            std::cout
-                << "\033[31m" << "[FAILURE]  " // Red text
-                << "\033[0m" << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name
-                << "\t" << "Residual: \033[33m" << relative_residual << "\033[0m (rel) \033[33m" << absolute_residual << "\033[0m (abs)" << std::endl;
+            // Calculate error
+            double relative_residual = rel_residual(C, C_reference, M * N);
+            double absolute_residual = abs_residual(C, C_reference, M * N);
+            residual_sums[input_type] += relative_residual;
             
-            std::cout << "\t" << "Seed: \033[33m" << std::hex << starting_seed << std::dec << "\033[0m\tM=\033[33m" << M << "\033[0m K=\033[33m" << K << "\033[0m N=\033[33m" << N << "\033[0m" << std::endl;
-            std::cout << "\t" << "Wrong at: \033[33mRow " << row << "\033[0m, \033[33mCol " << col << "\033[0m" << std::endl;
-            std::cout << "\t" << "Expected: \033[33m" << ref_sol << "\033[0m\tActual:   \033[33m" << wrong_val << "\033[0m" << std::endl;
-            std::cout << "\t" << "Error:    \033[33m" << rel_err << "\033[0m (rel) \033[33m" << abs_err << "\033[0m (abs)" << std::endl;
-            break;
+            // Analyze result for "regular" inputs
+            if (input_type < 2) {
+                int wrong = test_matmul_correctness_full(C, C_reference, M, N);
+                if (wrong != -1) {
+                    failed = true;
+                    // Give a nice error message
+                    double wrong_val = (double) C[wrong];
+                    double ref_sol = C_reference[wrong];
+                    double abs_err = abs(ref_sol - wrong_val);
+                    double rel_err = abs_err / abs(ref_sol);
+                    size_t row = wrong / N;
+                    size_t col = wrong % N;
+
+                    std::cout
+                        << "\033[31m" << "[FAILURE]  " // Red text
+                        << "\033[0m" << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name
+                        << "\t" << "Residual: \033[33m" << relative_residual << "\033[0m (rel) \033[33m" << absolute_residual << "\033[0m (abs)" << std::endl;
+                    
+                    std::cout << "\t" << "Seed: \033[33m" << std::hex << starting_seed << std::dec << "\033[0m\tM=\033[33m" << M << "\033[0m K=\033[33m" << K << "\033[0m N=\033[33m" << N << "\033[0m" << std::endl;
+                    std::cout << "\t" << "Input type: \033[33m" << input_type << "\033[0m" << std::endl;
+                    std::cout << "\t" << "Wrong at: \033[33mRow " << row << "\033[0m, \033[33mCol " << col << "\033[0m" << std::endl;
+                    std::cout << "\t" << "Expected: \033[33m" << ref_sol << "\033[0m\tActual:   \033[33m" << wrong_val << "\033[0m" << std::endl;
+                    std::cout << "\t" << "Error:    \033[33m" << rel_err << "\033[0m (rel) \033[33m" << abs_err << "\033[0m (abs)" << std::endl;
+                }
+            }
+            
+            free(A);
+            free(B);
+            free(C_reference);
+
+            if (failed) {
+                break;
+            }
         }
 
         // Free memory
-        free(A);
-        free(B);
         free(C);
+
+        if (failed) {
+            break;
+        }
     }
 
     if (!failed) {
         // Success!
-        double avg_rel_residual = relative_residual_sum / (double) RUNS;
-        double avg_abs_residual = absolute_residual_sum / (double) RUNS;
         std::cout
             << "\033[32m" << "[SUCCESS]  " << "\033[0m" // Green text
             << std::left << std::setw(FUNCTION_NAME_WIDTH) << function->name;
         // Print residual errors
-        std::cout << "Avg residual: \033[33m" << std::left << std::setw(11) << avg_rel_residual << "\033[0m (rel) \033[33m" << std::left << std::setw(11) << avg_abs_residual << "\033[0m (abs)" << std::endl;
+        
+        std::cout << "Relative residuals: ";
+        for (size_t input_type = 0; input_type < NUM_TYPES; input_type++) {
+            double avg_rel_residual = residual_sums[input_type] / (double) RUNS;
+            std::cout << "Type " << input_type << ": \033[33m" << std::left << std::setw(11) << avg_rel_residual << "\033[0m ";
+        }
+        std::cout << std::endl;
     }
 }
 

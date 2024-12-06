@@ -42,9 +42,32 @@ bool fileExists(const std::string& filename) {
     return false;
 }
 
+const std::string typeToSchema(int input_type) {
+    switch (input_type) {
+        default:
+            return "unknown";
+        case 0:
+            return "uniform";
+        case 1:
+            return "ootomoType1";
+        case 2:
+            return "ootomoType2";
+        case 3:
+            return "ootomoType3";
+        case 4:
+            return "ootomoType4";
+    }
+}
+
 // Loads matrices if they exist, else computes and stores them
 template<class T>
-std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schema, struct LCG *rng) {
+std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, int input_type, struct LCG *rng) {
+    const std::string schema = typeToSchema(input_type);
+    if (schema == "unknown") {
+        perror("MatCache: Unknown input type!");
+        return {nullptr, nullptr, nullptr};
+    }
+
     std::string precision = std::is_same<T, float>::value ? "float" : "double";
     std::string filenameA = generateFilename(M, K, N, 'A', schema, precision);
     std::string filenameB = generateFilename(M, K, N, 'B', schema, precision);
@@ -99,36 +122,11 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schem
         free(A);
         free(B);
         free(C);
-        return {nullptr, nullptr, nullptr};
     }
 
     //printf("Matrices do not exist; generating them\n");
-
-    if (schema == "uniform") {
-        gen_urand<T>(rng, A, M * K);
-        gen_urand<T>(rng, B, K * N);
-    } else if (schema == "exponential") {
-        gen_exp_rand<T>(rng, A, M * K, -10, 10);
-        gen_exp_rand<T>(rng, B, K * N, -10, 10);
-    } else {
-        perror(("MatCache: Unknown schema: " + schema).c_str());
-        free(A);
-        free(B);
-        free(C);
-        return {nullptr, nullptr, nullptr};
-    }
-
-    if constexpr (std::is_same<T, float>::value) {
-        referenceMatmul_full(reinterpret_cast<float*>(A), 
-                        reinterpret_cast<float*>(B), 
-                        reinterpret_cast<float*>(C), 
-                        M, K, N);
-    } else {
-        referenceMatmul_full(reinterpret_cast<double*>(A), 
-                        reinterpret_cast<double*>(B), 
-                        reinterpret_cast<double*>(C), 
-                        M, K, N);
-    }
+    fill_matrices(rng, input_type, A, B, M*K, K*N);
+    referenceMatmul_full<T>(A, B, C, M, K, N);
 
     // Store the matrices
     storeMatrix(A, M, K, N, 'A', schema);
@@ -139,5 +137,5 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, const std::string& schem
 }
 
 
-template std::tuple<float*, float*, float*> getMatrices<float>(int, int, int, const std::string&, struct LCG*);
-template std::tuple<double*, double*, double*> getMatrices<double>(int, int, int, const std::string&, struct LCG*);
+template std::tuple<float*, float*, float*> getMatrices<float>(int, int, int, int, struct LCG*);
+template std::tuple<double*, double*, double*> getMatrices<double>(int, int, int, int, struct LCG*);

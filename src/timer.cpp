@@ -204,7 +204,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 12;
+    int powerOfMaxSize = 14;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int numInputTypes = 5;

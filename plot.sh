@@ -40,9 +40,9 @@ else
         # python3 scripts/plotting.py --input_folder $folder32 --speedup
         python3 scripts/plotting.py --input_folder $folder32 --precision
     elif [ "$1" -eq 64 ]; then
-    echo "Generating FP64 plots"
-        ./build/main 64 -p $folder64
+        echo "Generating FP64 plots"
         mkdir -p $folder64
+        ./build/main 64 -p $folder64
         python3 scripts/plotting.py --input_folder $folder64
         python3 scripts/plotting.py --input_folder $folder64 --compare
         # python3 scripts/plotting.py --input_folder $folder64 --speedup
