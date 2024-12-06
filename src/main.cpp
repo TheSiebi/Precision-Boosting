@@ -98,10 +98,16 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = true,
     },
     {
-        .function = matmul_Ozaki_v0,
-        .name = "matmul_Ozaki v0",
+        .function = matmul_ozaki<0>,
+        .name = "Matmul Ozaki v0",
         .description = "Ozaki FP64 using FP32 on CPU",
         .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<1>,
+        .name = "Matmul Ozaki v1",
+        .description = "Ozaki FP64 using FP32. Matmul on GPU, split-merge on CPU",
+        .highestPerforming = true,
     },
     {
         .function = matmul_Ootomo_double_v0,
@@ -119,6 +125,18 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_simpleMarkidis_double<1>,
         .name = "Simple Markidis double v1",
         .description = "Split 4, 16 multiply",
+        .highestPerforming = true,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<2>,
+        .name = "Simple Markidis double v2",
+        .description = "Split 2, 4 float multiply",
+        .highestPerforming = true,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<3>,
+        .name = "Simple Markidis double v3",
+        .description = "Split 2, 4 double multiply",
         .highestPerforming = true,      
     },
     {

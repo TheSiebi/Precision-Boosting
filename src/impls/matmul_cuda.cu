@@ -528,6 +528,8 @@ void matmulCUDACores(InputType *A, InputType *B, OutputType *C, int M, int K, in
 
 template void matmulCUDACores<half, float, 0>(half*, half*, float*, int, int, int);
 template void matmulCUDACores<half, float, 1>(half*, half*, float*, int, int, int);
+template void matmulCUDACores<float, float, 1>(float*, float*, float*, int, int, int);
+template void matmulCUDACores<float, double, 1>(float*, float*, double*, int, int, int);
 
 template<typename InputType, typename OutputType, int version>
 void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
