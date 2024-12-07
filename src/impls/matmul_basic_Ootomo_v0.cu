@@ -57,7 +57,7 @@ flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, size_t M, size_
     PRINT_ON_ERROR(cudaGetLastError());
 
     // Copy from device to host
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
     PRINT_ON_ERROR(cudaMemcpy(A16B16, dev_A16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost));
     PRINT_ON_ERROR(cudaMemcpy(dA16B16, dev_dA16B16, M * N * sizeof(float), cudaMemcpyDeviceToHost));
     PRINT_ON_ERROR(cudaMemcpy(A16dB16, dev_A16dB16, M * N * sizeof(float), cudaMemcpyDeviceToHost));

@@ -9,6 +9,7 @@
 #include "machine.h"
 #include "../lib/cjson/cJSON.h"
 #include "precision.h"
+#include "matcache.h"
 
 
 #define NS_PER_SECOND 1e9
@@ -177,13 +178,14 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
         fflush(stdout);
 
         // Fill matrices A and B according to input type
-        fill_matrices<T>(&rng, input_type, A, B, M*K, K*N);
+        //fill_matrices<T>(&rng, input_type, A, B, M*K, K*N);
+        auto [A, B, C_ref] = getMatrices<T>(M, K, N, input_type, &rng);
 
         // Run matmul implementation
         func(A, B, C, M, K, N);        
 
         // Measure error
-        referenceMatmul_full(A, B, C_ref, M, K, N);
+        //referenceMatmul_full(A, B, C_ref, M, K, N);
         double residual = rel_residual(C, C_ref, M * N);
         residuals[i] = residual;
     }
@@ -204,7 +206,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 14;
+    int powerOfMaxSize = 13;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int numInputTypes = 5;

@@ -152,7 +152,7 @@ flop_counts matmul_markidis(float *A, float *B, float *C, size_t M, size_t K, si
              (deviceA, deviceB, deviceC, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     PRINT_ON_ERROR(cudaMemcpy(C, deviceC, CSize, cudaMemcpyDeviceToHost));

@@ -3,7 +3,13 @@
 #ifdef NPROFILER
 
 void profiler_reset(){}
-void profiler_segments_print(long flops16, long flops32, long flops64){}
+void profiler_segments_print(long flops16, long flops32, long flops64)
+{
+    //dummy statements to avoid warnings
+    (void)flops16;
+    (void)flops32;
+    (void)flops64;
+}
 
 #else //NPROFILER
 

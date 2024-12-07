@@ -625,7 +625,7 @@ flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, siz
 
     PRINT_ON_ERROR(cudaGetLastError());
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     PRINT_ON_ERROR(cudaMemcpy(C, deviceC, CSize, cudaMemcpyDeviceToHost));

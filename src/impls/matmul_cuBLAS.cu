@@ -41,7 +41,7 @@ flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, size_t M, size_t
                          &beta,
                          d_C, N);
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("CUBLAS multiplication failed\n");
     }
@@ -96,7 +96,7 @@ flop_counts matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, size_t M, siz
                          &beta,
                          d_C, N);
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("CUBLAS multiplication failed\n");
     }

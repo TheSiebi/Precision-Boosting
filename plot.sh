@@ -11,7 +11,8 @@ timestamp=$(date +'%Y_%m_%dT%H-%M-%S')
 folder32="timings/${timestamp}_FP32"
 folder64="timings/${timestamp}_FP64"
 
-make
+make clean
+make USER_FLAGS=-DNPROFILER
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -54,3 +55,5 @@ fi
 
 delete_empty "$folder32"
 delete_empty "$folder64"
+
+make clean
