@@ -10,6 +10,8 @@
 
 #include "../matmul.h"
 
+#include <cuda_fp16.h>
+
 size_t ix(size_t row, size_t col, size_t rows, size_t cols)
 {
     return col + row * cols;
@@ -44,13 +46,91 @@ void matmul_triple_loop(const size_t m, const size_t k, const size_t n, const T*
     }
 }
 
+std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t n, double* a, const int l)
+{
+    // q = size(A, 2);
+    // This simply means q := n
+    const int q = n;
+
+    // k = 1;
+    // Keeps consistency with paper. We'll subtract one every time we index into D.
+    int k = 1;
+
+    // beta = fl(...)
+    const float log2u = -11.f; // half precision
+    const float beta = ceilf((-log2u + log2f(q)) / 2.f);
+
+    // D{1} = zeros(size(A));
+    std::vector<std::vector<half>> D = { std::vector<half>(m * n, __float2half(0.f)) };
+
+    // while(k < l)
+    while (k < l)
+    {
+        // mu = max(abs(A), [], 2);
+        std::vector<double> mu(m, 0.0);
+        for (size_t i = 0; i < m; ++i)
+            for (size_t j = 0; j < q; ++j)
+                mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
+
+        // if(max(mu) == 0) -> return
+        double max = 0.0;
+        for (const auto mu_i: mu)
+            max = fmax(max, mu_i);
+        if (max == 0.0)
+        {
+            // printf("Early termination\n");
+            return D;
+        }
+
+        // w = fl(...);
+        std::vector<half> w(m);
+        for (size_t i = 0; i < m; ++i)
+            w[i] = __float2half(exp2f(ceilf((float) log2f(mu[i])) + beta));
+
+        // S = repmat(w, 1, q);
+        std::vector<half> S(m * n);
+        for (size_t i = 0; i < m; ++i)
+            for (size_t j = 0; j < n; ++j)
+                S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
+
+        // D{k} = fl((A + S) - S);
+        // A = fl(A - D{k});
+        D.resize(k, std::vector<half>(m * n));
+        for (size_t ij = 0; ij < m * n; ++ij)
+        {
+            D[k - 1][ij] = __float2half((float) (a[ij] + __half2float(S[ij])));
+            D[k - 1][ij] = __float2half(__half2float(D[k - 1][ij]) - __half2float(S[ij]));
+            a[ij] = __float2half(__half2float(a[ij]) - __half2float(D[k - 1][ij]));
+        }
+
+        // % Checking sparsity of D{k}
+        // Omitted
+
+        // k = k + 1;
+        ++k;
+    }
+
+    // if(k == l)
+    if (k == l)
+    {
+        // Happens if early termination criterion was not met.
+        // D{k} = A;
+        // printf("Early termination not reached for k = %zu = l, D.size() = %zu\n", k, D.size());
+        D.resize(k, std::vector<half>(m * n));
+        for (size_t ij = 0; ij < m * n; ++ij)
+            D[k - 1][ij] = __float2half((float) a[ij]); // Downcasting? Paper just says D{k} = A
+    }
+
+    return D;
+}
+
 /**
  * Implementation of Algorithm 3 in Ozaki paper.
  * Returns an unevaluated sum as a vector of matrices stored as vectors.
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
-std::vector<std::vector<float>> ozaki_split(const size_t m, const size_t n, double* a, const int l)
+std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_t n, double* a, const int l)
 {
     // q = size(A, 2);
     // This simply means q := n
@@ -133,48 +213,80 @@ std::vector<std::vector<float>> ozaki_split(const size_t m, const size_t n, doub
 /**
  * Implementation of Algorithm 4 in Ozaki paper.
  * Returns an unevaluated sum as a vector of matrices stored as vectors.
- * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
 template<int version>
 std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const size_t p, double* a, double* b, int64_t* nA_ptr, int64_t* nB_ptr)
 {
+    // Limit number of splits
+    const size_t MAX_SPLITS = 30;
+
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
 
-    // D = Split_Mat(A, inf, delta); nA = length(D);
-    auto D = ozaki_split(m, n, a, INT_MAX);
-    const auto nA = D.size();
-    *nA_ptr = (int) nA;
-
-    // E = Split_Mat(BT, inf, delta); nB = length(E);
-    // Do we really need to transpose B?
-    // transpose(n, p, b);
-    auto E = ozaki_split(n, p, b, INT_MAX); // remove const qualifier if you do wish to transpose
-    const auto nB = E.size();
-    *nB_ptr = (int) nB;
-
-    // for r = 1 : nB, E{r} = E{r}T ; end
-    // again, why transpose?
-    // for (auto& matrix: E)
-    //     transpose(p, n, matrix.data());
-
-    int t = 0;
-    std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
-    for (int r = 0; r < nA; ++r)
+    if constexpr (version == 0 || version == 1)
     {
-        for (int s = 0; s < nB; ++s)
+        // D = Split_Mat(A, inf, delta); nA = length(D);
+        auto D = ozaki_split_to_float(m, n, a, MAX_SPLITS);
+        const auto nA = D.size();
+        *nA_ptr = (int) nA;
+
+        // E = Split_Mat(BT, inf, delta); nB = length(E);
+        // Do we really need to transpose B?
+        // transpose(n, p, b);
+        auto E = ozaki_split_to_float(n, p, b, MAX_SPLITS);
+        const auto nB = E.size();
+        *nB_ptr = (int) nB;
+
+        // for r = 1 : nB, E{r} = E{r}T ; end
+        // again, why transpose?
+        // for (auto& matrix: E)
+        //     transpose(p, n, matrix.data());
+
+        int t = 0;
+        std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
+        for (int r = 0; r < nA; ++r)
         {
-            if constexpr (version == 0)
-                matmul_triple_loop<float>(m, n, p, D[r].data(), E[s].data(), C[t++].data());
-            else if constexpr (version == 1)
-                matmul_cuda<float, float, 1, false>(D[r].data(), E[s].data(), C[t++].data(), m, n, p);
-            else
-                throw std::runtime_error(std::string("unimplemented ozaki version " + version));
+            for (int s = 0; s < nB; ++s)
+            {
+                if constexpr (version == 0)
+                    matmul_triple_loop<float>(m, n, p, D[r].data(), E[s].data(), C[t++].data());
+                else if constexpr (version == 1)
+                    matmul_cuda<float, float, 1, false>(D[r].data(), E[s].data(), C[t++].data(), m, n, p);
+                else
+                    throw std::runtime_error(std::string("unimplemented ozaki version " + version));
+            }
         }
+
+        return C;
     }
 
-    return C;
+    else if constexpr (version == 2)
+    {
+        // D = Split_Mat(A, inf, delta); nA = length(D);
+        auto D = ozaki_split_to_half(m, n, a, MAX_SPLITS);
+        const auto nA = D.size();
+        *nA_ptr = (int) nA;
+
+        // E = Split_Mat(BT, inf, delta); nB = length(E);
+        auto E = ozaki_split_to_half(n, p, b, MAX_SPLITS);
+        const auto nB = E.size();
+        *nB_ptr = (int) nB;
+
+        std::cout << "nA: " << nA << "/" << MAX_SPLITS << ", ";
+        std::cout << "nB: " << nB << "/" << MAX_SPLITS << "\n";
+
+        int t = 0;
+        std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
+        for (int r = 0; r < nA; ++r)
+            for (int s = 0; s < nB; ++s)
+                matmul_cuda<half, float, 3, true>(D[r].data(), E[s].data(), C[t++].data(), m, n, p);
+
+        return C;
+    }
+
+    else
+        throw std::runtime_error(std::string("unimplemented ozaki version " + version));
 
 }
 
@@ -191,6 +303,7 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
 
     PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul<version>(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
+    std::cout << "size: " << sizeof(unevaluated_sum[0][0]) << "\n";
     memset(c, 0, m * p * sizeof(double));
     for (size_t ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
@@ -209,3 +322,4 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
 
 template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
+template flop_counts matmul_ozaki<2>(double *a, double *b, double *c, size_t m, size_t n, size_t p);

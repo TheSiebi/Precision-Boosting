@@ -647,4 +647,5 @@ template flop_counts matmul_cuda<double, double, 3, true>(double*, double*, doub
 #endif
 template flop_counts matmul_cuda<float, float, 1, false>(float*, float*, float*, size_t, size_t, size_t);
 template flop_counts matmul_cuda<double, double, 1, false>(double*, double*, double*, size_t, size_t, size_t);
+template flop_counts matmul_cuda<half, float, 3, true>(half*, half*, float*, size_t, size_t, size_t);
 
