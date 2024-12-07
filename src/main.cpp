@@ -83,7 +83,7 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_cuBLAS32,
-        .name = "matmul_cuBLAS",
+        .name = "matmul_cuBLAS 32",
         .description = "cuBLAS",
         .highestPerforming = true,
     }
@@ -93,7 +93,7 @@ matmul_variant<double> matmulVariants64[] =
 {
     {
         .function = matmul_cuBLAS64,
-        .name = "matmul_cuBLAS",
+        .name = "matmul_cuBLAS 64",
         .description = "cuBLAS",
         .highestPerforming = true,
     },
@@ -374,7 +374,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 }
 
 template<class T>
-void profile(matmul_variant<T> variant, int warmup, int iterations, int M, int K, int N)
+void profile(matmul_variant<T> variant, int warmup, int iterations, size_t M, size_t K, size_t N)
 {
     T *A = (T*)calloc(M * K, sizeof(*A));
     T *B = (T*)calloc(K * N, sizeof(*B));

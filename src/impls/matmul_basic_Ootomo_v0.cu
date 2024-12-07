@@ -11,7 +11,7 @@
 #include "../timer.h"
 #include "./matmul_cuda.h"
 
-flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     // Allocate host memory
     half* A16      = (half*) malloc(M * K * sizeof(half));

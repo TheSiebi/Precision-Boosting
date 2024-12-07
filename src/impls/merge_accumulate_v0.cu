@@ -2,7 +2,7 @@
 
 #include "../merge_accumulate.h"
 
-void merge_v0(const void *A16, const void *dA16, double* merged, int M, int N)
+void merge_v0(const void *A16, const void *dA16, double* merged, size_t M, size_t N)
 {
     const half *_A16 = (half *) A16;
     const half *_dA16 = (half *) dA16;
@@ -10,7 +10,7 @@ void merge_v0(const void *A16, const void *dA16, double* merged, int M, int N)
         merged[i] = (double) __half2float(_A16[i]) + (double) __half2float(_dA16[i]);
 }
 
-void mergef_v0(const void *A16, const void *dA16, float* merged, int M, int N)
+void mergef_v0(const void *A16, const void *dA16, float* merged, size_t M, size_t N)
 {
     const half *_A16 = (half *) A16;
     const half *_dA16 = (half *) dA16;
@@ -18,7 +18,7 @@ void mergef_v0(const void *A16, const void *dA16, float* merged, int M, int N)
         merged[i] = __half2float(_A16[i]) + __half2float(_dA16[i]);
 }
 
-void merge_Ootomo_v0(const void *A16, const void *dA16, double* merged, int M, int N)
+void merge_Ootomo_v0(const void *A16, const void *dA16, double* merged, size_t M, size_t N)
 {
     const half *_A16 = (half *) A16;
     const half *_dA16 = (half *) dA16;
@@ -26,7 +26,7 @@ void merge_Ootomo_v0(const void *A16, const void *dA16, double* merged, int M, i
         merged[i] = (double) __half2float(_A16[i]) + (double) (__half2float(_dA16[i])) / 2048.0; // 2^11
 }
 
-void mergef_Ootomo_v0(const void *A16, const void *dA16, float* merged, int M, int N)
+void mergef_Ootomo_v0(const void *A16, const void *dA16, float* merged, size_t M, size_t N)
 {
     const half *_A16 = (half *) A16;
     const half *_dA16 = (half *) dA16;

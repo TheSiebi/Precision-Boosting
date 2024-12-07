@@ -15,7 +15,7 @@
 
 template<typename InputType, typename OutputType,
          int FragSizeM, int FragSizeK, int FragSizeN>
-__global__ void matmul_kernel_Tensor_v0(InputType *A, InputType *B, OutputType *C, int M, int K, int N) 
+__global__ void matmul_kernel_Tensor_v0(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
 {
     using namespace nvcuda;
 
@@ -47,7 +47,7 @@ __global__ void matmul_kernel_Tensor_v0(InputType *A, InputType *B, OutputType *
 template<typename InputType, typename OutputType,
          int BlockSizeM, int BlockSizeN, int KStep, 
          int FragSizeM, int FragSizeK, int FragSizeN>
-__global__ void matmul_kernel_Tensor_v1(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
+__global__ void matmul_kernel_Tensor_v1(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -94,7 +94,7 @@ template<typename InputType, typename OutputType,
          int BlockSizeM, int BlockSizeN, int KStep, 
          int WarpSizeM, int WarpSizeN,
          int FragSizeM, int FragSizeK, int FragSizeN>
-__global__ void matmul_kernel_Tensor_v2(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
+__global__ void matmul_kernel_Tensor_v2(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -155,7 +155,7 @@ template<typename InputType, typename OutputType,
          int BlockSizeM, int BlockSizeN, int KStep, 
          int WarpSizeM, int WarpSizeN,
          int FragSizeM, int FragSizeK, int FragSizeN>
-__global__ void matmul_kernel_Tensor_v3(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
+__global__ void matmul_kernel_Tensor_v3(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -232,7 +232,7 @@ __global__ void matmul_kernel_Tensor_v3(InputType *A, InputType *B, OutputType *
 }
 
 template<typename InputType, typename OutputType>
-__global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, int M, int K, int N) 
+__global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
 {
     int m = blockIdx.x * blockDim.x + threadIdx.x;
     int n = blockIdx.y * blockDim.y + threadIdx.y;
@@ -335,7 +335,7 @@ __device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threa
 template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int WMITER, const int WNITER, const int TM, const int TN,
           typename InputType, typename OutputType>
-__global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, OutputType *C, int M, int K, int N)
+__global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     const int cRow = blockIdx.x;
     const int cCol = blockIdx.y;
@@ -490,7 +490,7 @@ constexpr struct matmulTemplateArgsCUDA getMatmulTemplateArgsCUDA()
 }
 
 template<typename InputType, typename OutputType, int version>
-void matmulCUDACores(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
+void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     if constexpr (version == 0)
     {
@@ -526,13 +526,13 @@ void matmulCUDACores(InputType *A, InputType *B, OutputType *C, int M, int K, in
     }
 }
 
-template void matmulCUDACores<half, float, 0>(half*, half*, float*, int, int, int);
-template void matmulCUDACores<half, float, 1>(half*, half*, float*, int, int, int);
-template void matmulCUDACores<float, float, 1>(float*, float*, float*, int, int, int);
-template void matmulCUDACores<float, double, 1>(float*, float*, double*, int, int, int);
+template void matmulCUDACores<half, float, 0>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<half, float, 1>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<float, float, 1>(float*, float*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<float, double, 1>(float*, float*, double*, size_t, size_t, size_t);
 
 template<typename InputType, typename OutputType, int version>
-void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, int N)
+void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     const int BLOCK_SIZE_M = std::is_same<InputType, half>::value ? 64 : 32;
     const int BLOCK_SIZE_N = std::is_same<InputType, half>::value ? 64 : 32;
@@ -590,13 +590,13 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, int M, int K, 
     PRINT_ON_ERROR(cudaGetLastError());
 }
 
-template void matmulTensorCores<half, float, 0>(half*, half*, float*, int, int, int);
-template void matmulTensorCores<half, float, 1>(half*, half*, float*, int, int, int);
-template void matmulTensorCores<half, float, 2>(half*, half*, float*, int, int, int);
-template void matmulTensorCores<half, float, 3>(half*, half*, float*, int, int, int);
+template void matmulTensorCores<half, float, 0>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 1>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 2>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, size_t, size_t);
 
 template<typename InputType, typename OutputType, int version, bool useTensorCores>
-flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, int M, int K, int N) 
+flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
 {
     assert((M & 0xF) == 0);
     assert((K & 0xF) == 0);
@@ -636,15 +636,15 @@ flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, int M, int K,
     PRINT_ON_ERROR(cudaFree(deviceC));
     PROFILE_SEGMENT_FUNCTION_END();
 
-    flop_counts counts = {0L, 0L, 2L*M*K*N};
+    flop_counts counts = {0, 0, 2*M*K*N};
     return counts;
 }
 #if SM_VERSION >= 800
-template flop_counts matmul_cuda<double, double, 0, true>(double*, double*, double*, int, int, int);
-template flop_counts matmul_cuda<double, double, 1, true>(double*, double*, double*, int, int, int);
-template flop_counts matmul_cuda<double, double, 2, true>(double*, double*, double*, int, int, int);
-template flop_counts matmul_cuda<double, double, 3, true>(double*, double*, double*, int, int, int);
+template flop_counts matmul_cuda<double, double, 0, true>(double*, double*, double*, size_t, size_t, size_t);
+template flop_counts matmul_cuda<double, double, 1, true>(double*, double*, double*, size_t, size_t, size_t);
+template flop_counts matmul_cuda<double, double, 2, true>(double*, double*, double*, size_t, size_t, size_t);
+template flop_counts matmul_cuda<double, double, 3, true>(double*, double*, double*, size_t, size_t, size_t);
 #endif
-template flop_counts matmul_cuda<float, float, 1, false>(float*, float*, float*, int, int, int);
-template flop_counts matmul_cuda<double, double, 1, false>(double*, double*, double*, int, int, int);
+template flop_counts matmul_cuda<float, float, 1, false>(float*, float*, float*, size_t, size_t, size_t);
+template flop_counts matmul_cuda<double, double, 1, false>(double*, double*, double*, size_t, size_t, size_t);
 

@@ -10,7 +10,7 @@
 
 #include "../matmul.h"
 
-int ix(int row, int col, int rows, int cols)
+size_t ix(size_t row, size_t col, size_t rows, size_t cols)
 {
     return col + row * cols;
 }
@@ -30,14 +30,14 @@ void transpose(const size_t rows, const size_t cols, T* data)
 }
 
 template<class T>
-void matmul_triple_loop(const int m, const int k, const int n, const T* a, const T* b, T* c)
+void matmul_triple_loop(const size_t m, const size_t k, const size_t n, const T* a, const T* b, T* c)
 {
-    for (int row = 0; row < m; ++row)
+    for (size_t row = 0; row < m; ++row)
     {
-        for (int col = 0; col < n; ++col)
+        for (size_t col = 0; col < n; ++col)
         {
             T sum = (T) 0;
-            for (int l = 0; l < k; ++l)
+            for (size_t l = 0; l < k; ++l)
                 sum += a[ix(row, l, m, k)] * b[ix(l, col, k, n)];
             c[ix(row, col, m, n)] = sum;
         }
@@ -50,7 +50,7 @@ void matmul_triple_loop(const int m, const int k, const int n, const T* a, const
  * Uses fp32 (float) to emulate fp64 (double) precision.
  * Completely disregards sparsity criterion.
  */
-std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a, const int l)
+std::vector<std::vector<float>> ozaki_split(const size_t m, const size_t n, double* a, const int l)
 {
     // q = size(A, 2);
     // This simply means q := n
@@ -72,8 +72,8 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
     {
         // mu = max(abs(A), [], 2);
         std::vector<double> mu(m, 0.0);
-        for (int i = 0; i < m; ++i)
-            for (int j = 0; j < q; ++j)
+        for (size_t i = 0; i < m; ++i)
+            for (size_t j = 0; j < q; ++j)
                 mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
@@ -88,19 +88,19 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
 
         // w = fl(...);
         std::vector<float> w(m);
-        for (int i = 0; i < m; ++i)
+        for (size_t i = 0; i < m; ++i)
             w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
         std::vector<float> S(m * n);
-        for (int i = 0; i < m; ++i)
-            for (int j = 0; j < n; ++j)
+        for (size_t i = 0; i < m; ++i)
+            for (size_t j = 0; j < n; ++j)
                 S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
 
         // D{k} = fl((A + S) - S);
         // A = fl(A - D{k});
         D.resize(k, std::vector<float>(m * n));
-        for (int ij = 0; ij < m * n; ++ij)
+        for (size_t ij = 0; ij < m * n; ++ij)
         {
             D[k - 1][ij] = a[ij] + S[ij];
             D[k - 1][ij] -= S[ij];
@@ -121,7 +121,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
         // D{k} = A;
         // printf("Early termination not reached for k = %zu = l, D.size() = %zu\n", k, D.size());
         D.resize(k, std::vector<float>(m * n));
-        for (int ij = 0; ij < m * n; ++ij)
+        for (size_t ij = 0; ij < m * n; ++ij)
             D[k - 1][ij] = (float) a[ij]; // Downcasting? Paper just says D{k} = A
     }
 
@@ -137,7 +137,7 @@ std::vector<std::vector<float>> ozaki_split(const int m, const int n, double* a,
  * Completely disregards sparsity criterion.
  */
 template<int version>
-std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p, double* a, double* b, int64_t* nA_ptr, int64_t* nB_ptr)
+std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const size_t p, double* a, double* b, int64_t* nA_ptr, int64_t* nB_ptr)
 {
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
@@ -180,7 +180,7 @@ std::vector<std::vector<float>> ozaki_mul(const int m, const int n, const int p,
 
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 template<int version>
-flop_counts matmul_ozaki(double *a, double *b, double *c, int m, int n, int p)
+flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, size_t p)
 {
     // Ozaki splitting modifies input matrices. Therefore, copies must be made.
     std::vector<double> a_copy(a, a + m * n);
@@ -192,7 +192,7 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, int m, int n, int p)
     PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul<version>(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
     memset(c, 0, m * p * sizeof(double));
-    for (int ij = 0; ij < m * p; ++ij)
+    for (size_t ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)
             c[ij] += matrix[ij];
 
@@ -207,5 +207,5 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, int m, int n, int p)
     return counts;
 }
 
-template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, int m, int n, int p);
-template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, int m, int n, int p);
+template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
+template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, size_t m, size_t n, size_t p);

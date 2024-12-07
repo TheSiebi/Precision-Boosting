@@ -112,7 +112,7 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WARP_COLS_PER_BLOCK,
           const int N_WMMA_ROWS_PER_WARP,
           const int N_WMMA_COLS_PER_WARP>
-__global__ void matmul_v0_kernel(const half *A, const half *B, float *C, int M, int K, int N)
+__global__ void matmul_v0_kernel(const half *A, const half *B, float *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -311,7 +311,7 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WARP_COLS_PER_BLOCK,
           const int N_WMMA_ROWS_PER_WARP,
           const int N_WMMA_COLS_PER_WARP>
-__global__ void matmul_v1_kernel(const float *A, const float *B, float *C, int M, int K, int N)
+__global__ void matmul_v1_kernel(const float *A, const float *B, float *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -465,7 +465,7 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WARP_COLS_PER_BLOCK,
           const int N_WMMA_ROWS_PER_WARP,
           const int N_WMMA_COLS_PER_WARP>
-__global__ void matmul_v2_kernel(const float *A, const float *B, float *C, int M, int K, int N)
+__global__ void matmul_v2_kernel(const float *A, const float *B, float *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -601,7 +601,7 @@ __global__ void matmul_v2_kernel(const float *A, const float *B, float *C, int M
 }
 
 template<int version>
-void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N) 
+void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -769,7 +769,7 @@ void matmul_Ootomo(float *A, float *B, float *C, int M, int K, int N)
  * 2*M*K flops32 + 2*K*N flops32 (splitting A and B)
  * + 5*N*M flops32 (merging with merge_cuda)
  */
-flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     matmul_Ootomo<0>(A, B, C, M, K, N);
     flop_counts counts = {8L*M*K*N, 2L*M*K + 2L*K*N + 5L*N*M, 0L};
@@ -787,7 +787,7 @@ flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, int M, int K, int N)
  * 
  * NOTE: merging/accumulation flops32 should double-checked again
  */
-flop_counts matmul_Ootomo_v1(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_Ootomo_v1(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     matmul_Ootomo<1>(A, B, C, M, K, N);
     flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
@@ -805,7 +805,7 @@ flop_counts matmul_Ootomo_v1(float *A, float *B, float *C, int M, int K, int N)
  * 
  * NOTE: merging/accumulation flops32 should double-checked again
  */
-flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, int M, int K, int N)
+flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     matmul_Ootomo<2>(A, B, C, M, K, N);
     flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
@@ -814,7 +814,7 @@ flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, int M, int K, int N)
 
 
 template<int version>
-void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N) 
+void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, size_t N) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -946,7 +946,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, int M, int K, int N)
  * 2*M*K flops64 + 2*K*N flops64 (splitting A and B)
  * + 5*N*M flops64               (merging with merge_cuda)
  */
-flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, int M, int K, int N)
+flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     matmul_Ootomo_double<0>(A, B, C, M, K, N);
     flop_counts counts = {24L*M*K*N, 4L*(2L*M*K + 2L*K*N + 3L*N*M), 2L*M*K + 2L*K*N + 5L*N*M};

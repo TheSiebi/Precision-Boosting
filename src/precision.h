@@ -33,7 +33,7 @@ template<class T>
 bool test_matmul_correctness_single(T *A, T *B, T *C, size_t K, size_t N, size_t index);
 
 template<class T>
-void referenceMatmul_full(T *A, T *B, T *C, int M, int K, int N);
+void referenceMatmul_full(T *A, T *B, T *C, size_t M, size_t K, size_t N);
 
 template<class T>
 double referenceMatmul_element(T *A, T *B, size_t K, size_t N, size_t index);
@@ -47,8 +47,8 @@ extern template int test_matmul_correctness_full<double>(double *C, double *C_re
 extern template double referenceMatmul_element<float>(float *A, float *B, size_t K, size_t N, size_t index);
 extern template double referenceMatmul_element<double>(double *A, double *B, size_t K, size_t N, size_t index);
 
-extern template void referenceMatmul_full<float>(float *A, float *B, float *C, int M, int K, int N);
-extern template void referenceMatmul_full<double>(double *A, double *B, double *C, int M, int K, int N);
+extern template void referenceMatmul_full<float>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+extern template void referenceMatmul_full<double>(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
 template<class T>
 bool test_equality(T *A, T *B, size_t N);

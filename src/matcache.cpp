@@ -7,7 +7,7 @@
 #include "precision.h"
 
 // Generate a filename based on matmul dimensions, generation schema, precision and operand (A, B, or C)
-std::string generateFilename(int M, int K, int N, char operand, const std::string& schema, const std::string& precision) {
+std::string generateFilename(size_t M, size_t K, size_t N, char operand, const std::string& schema, const std::string& precision) {
     std::ostringstream oss;
     oss << "matcache/matrix_" << operand << "_" << M << "x" << K << "x" << N << "_" << precision << "_" << schema << ".bin";
     return oss.str();
@@ -15,7 +15,7 @@ std::string generateFilename(int M, int K, int N, char operand, const std::strin
 
 // Store a matrix in a binary file
 template<class T>
-int storeMatrix(T* matrix, int M, int K, int N, char operand, const std::string& schema) {
+int storeMatrix(T* matrix, size_t M, size_t K, size_t N, char operand, const std::string& schema) {
     std::string precision = std::is_same<T, float>::value ? "float" : "double";
     std::string filename = generateFilename(M, K, N, operand, schema, precision);
     FILE* file = fopen(filename.c_str(), "wb");
@@ -61,7 +61,7 @@ const std::string typeToSchema(int input_type) {
 
 // Loads matrices if they exist, else computes and stores them
 template<class T>
-std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, int input_type, struct LCG *rng) {
+std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type, struct LCG *rng) {
     const std::string schema = typeToSchema(input_type);
     if (schema == "unknown") {
         perror("MatCache: Unknown input type!");
@@ -88,9 +88,9 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, int input_type, struct L
         FILE* fileB = fopen(filenameB.c_str(), "rb");
         FILE* fileC = fopen(filenameC.c_str(), "rb");
 
-        int nrElementsA = fread(A, sizeof(T), M * K, fileA);
-        int nrElementsB = fread(B, sizeof(T), K * N, fileB);
-        int nrElementsC = fread(C, sizeof(T), M * N, fileC);
+        size_t nrElementsA = fread(A, sizeof(T), M * K, fileA);
+        size_t nrElementsB = fread(B, sizeof(T), K * N, fileB);
+        size_t nrElementsC = fread(C, sizeof(T), M * N, fileC);
 
         fclose(fileA);
         fclose(fileB);
@@ -137,5 +137,5 @@ std::tuple<T*, T*, T*> getMatrices(int M, int K, int N, int input_type, struct L
 }
 
 
-template std::tuple<float*, float*, float*> getMatrices<float>(int, int, int, int, struct LCG*);
-template std::tuple<double*, double*, double*> getMatrices<double>(int, int, int, int, struct LCG*);
+template std::tuple<float*, float*, float*> getMatrices<float>(size_t, size_t, size_t, int, struct LCG*);
+template std::tuple<double*, double*, double*> getMatrices<double>(size_t, size_t, size_t, int, struct LCG*);

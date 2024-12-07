@@ -1,10 +1,10 @@
 #ifndef MERGE_ACCUMULATE_H
 #define MERGE_ACCUMULATE_H
 
-void merge_v0(const void *A16, const void *dA16, double* merged, int M, int N);
-void mergef_v0(const void *A16, const void *dA16, float* merged, int M, int N);
-void merge_Ootomo_v0(const void *A16, const void *dA16, double* merged, int M, int N);
-void mergef_Ootomo_v0(const void *A16, const void *dA16, float* merged, int M, int N);
+void merge_v0(const void *A16, const void *dA16, double* merged, size_t M, size_t N);
+void mergef_v0(const void *A16, const void *dA16, float* merged, size_t M, size_t N);
+void merge_Ootomo_v0(const void *A16, const void *dA16, double* merged, size_t M, size_t N);
+void mergef_Ootomo_v0(const void *A16, const void *dA16, float* merged, size_t M, size_t N);
 
 // [4] Ootomo: equation 24, page 15
 void accumulate_Ootomo_v0(

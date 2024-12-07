@@ -2,7 +2,7 @@
 
 #include "../split.h"
 
-void split_v0(const double *A, void *A16, void *dA16, int M, int N)
+void split_v0(const double *A, void *A16, void *dA16, size_t M, size_t N)
 {
     half *_A16 = (half *) A16;
     half *_dA16 = (half *) dA16;
@@ -13,7 +13,7 @@ void split_v0(const double *A, void *A16, void *dA16, int M, int N)
     }    
 }
 
-void splitf_v0(const float *A, void *A16, void *dA16, int M, int N)
+void splitf_v0(const float *A, void *A16, void *dA16, size_t M, size_t N)
 {
     half *_A16 = (half *) A16;
     half *_dA16 = (half *) dA16;
@@ -24,7 +24,7 @@ void splitf_v0(const float *A, void *A16, void *dA16, int M, int N)
     }    
 }
 
-void split_Ootomo_v0(const double *A, void *A16, void *dA16, int M, int N)
+void split_Ootomo_v0(const double *A, void *A16, void *dA16, size_t M, size_t N)
 {
     half *_A16 = (half *) A16;
     half *_dA16 = (half *) dA16;
@@ -35,7 +35,7 @@ void split_Ootomo_v0(const double *A, void *A16, void *dA16, int M, int N)
     }
 }
 
-void splitf_Ootomo_v0(const float *A, void *A16, void *dA16, int M, int N)
+void splitf_Ootomo_v0(const float *A, void *A16, void *dA16, size_t M, size_t N)
 {
     half *_A16 = (half *) A16;
     half *_dA16 = (half *) dA16;

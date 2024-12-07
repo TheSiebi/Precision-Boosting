@@ -112,7 +112,7 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<T> func, LCG rng)
+flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -126,7 +126,7 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M
     flop_counts counts;
 
     for(int i = 0; i < warmupIterations; i++) {
-        printf("\r\tWarmup Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", i + 1, warmupIterations, M, K, N);
+        printf("\r\tWarmup Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", i + 1, warmupIterations, M, K, N);
         fflush(stdout);
         counts = func(A, B, C, M, K, N);
     }
@@ -135,7 +135,7 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M
 
     for(int i = 0; i < iterations; i++)
     {
-        printf("\r\tTiming Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", i + 1, iterations, M, K, N);
+        printf("\r\tTiming Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", i + 1, iterations, M, K, N);
         fflush(stdout);
         struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -154,11 +154,11 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M
     return counts;
 }
 
-template flop_counts timeRun<float>(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<float> func, LCG rng);
-template flop_counts timeRun<double>(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<double> func, LCG rng);
+template flop_counts timeRun<float>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
+template flop_counts timeRun<double>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
 
 template<class T>
-void measurePrecision(int input_type, double *residuals, int iterations, int M, int K, int N, MatMul<T> func, LCG rng)
+void measurePrecision(int input_type, double *residuals, int iterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
 {
     if (iterations == 0)
         return;
@@ -173,7 +173,7 @@ void measurePrecision(int input_type, double *residuals, int iterations, int M, 
     T* C_ref = (T *) calloc(M * N, sizeof(T));
 
     for(int i = 0; i < iterations; i++) {
-        printf("\r\tType %d Precision Measurement Iteration %d/%d | Matrix Sizes: M=%d, K=%d, N=%d", input_type, i + 1, iterations, M, K, N);
+        printf("\r\tType %d Precision Measurement Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", input_type, i + 1, iterations, M, K, N);
         fflush(stdout);
 
         // Fill matrices A and B according to input type
@@ -196,8 +196,8 @@ void measurePrecision(int input_type, double *residuals, int iterations, int M, 
 }
 
 
-template void measurePrecision<float>(int input_type, double *residuals, int iterations, int M, int K, int N, MatMul<float> func, LCG rng);
-template void measurePrecision<double>(int input_type, double *residuals, int iterations, int M, int K, int N, MatMul<double> func, LCG rng);
+template void measurePrecision<float>(int input_type, double *residuals, int iterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
+template void measurePrecision<double>(int input_type, double *residuals, int iterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
 
 template<class T>
 void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
@@ -226,7 +226,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     struct precisionMeasurement *ms = (struct precisionMeasurement*) calloc(numSizes * numInputTypes, sizeof(*ms));
     for (int i = 0; i < numSizes; i++)
     {
-        int n = 1 << (i + powerOfMinSize);
+        size_t n = 1 << (i + powerOfMinSize);
 
         // Adapt number of iterations based on heuristics on runtime
         iterationsPerConfig[i] = maxIterationsPerConfig;
@@ -287,7 +287,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
 template void timeFunction<float>(matmul_variant<float> *function, char *path, LCG rng);
 template void timeFunction<double>(matmul_variant<double> *function, char *path, LCG rng);
 
-flop_counts matmul_flopcount_32(int M, int K, int N) {
+flop_counts matmul_flopcount_32(size_t M, size_t K, size_t N) {
     flop_counts counts;
     counts.flops16 = 0;
     counts.flops32 = 2L*M*K*N;
@@ -295,7 +295,7 @@ flop_counts matmul_flopcount_32(int M, int K, int N) {
     return counts;
 }
 
-flop_counts matmul_flopcount_64(int M, int K, int N) {
+flop_counts matmul_flopcount_64(size_t M, size_t K, size_t N) {
     flop_counts counts;
     counts.flops16 = 0;
     counts.flops32 = 2L*M*K*N;

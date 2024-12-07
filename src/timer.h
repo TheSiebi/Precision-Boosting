@@ -10,13 +10,13 @@
 
 struct flop_counts
 {
-    long flops16;
-    long flops32;
-    long flops64;
+    size_t flops16;
+    size_t flops32;
+    size_t flops64;
 };
 
 template<class T>
-using MatMul = flop_counts (*)(T *A, T *B, T *C, int M, int K, int N);
+using MatMul = flop_counts (*)(T *A, T *B, T *C, size_t M, size_t K, size_t N);
 
 template<class T>
 struct matmul_variant
@@ -27,10 +27,10 @@ struct matmul_variant
     const bool highestPerforming;
 };
 
-typedef void (*Split)(const double *A, void *A16, void *dA16, int M, int N);
-typedef void (*Merge)(const void *A16, const void *dA16, double* merged, int M, int N);
-typedef void (*Splitf)(const float *A, void *A16, void *dA16, int M, int N);
-typedef void (*Mergef)(const void *A16, const void *dA16, float* merged, int M, int N);
+typedef void (*Split)(const double *A, void *A16, void *dA16, size_t M, size_t N);
+typedef void (*Merge)(const void *A16, const void *dA16, double* merged, size_t M, size_t N);
+typedef void (*Splitf)(const float *A, void *A16, void *dA16, size_t M, size_t N);
+typedef void (*Mergef)(const void *A16, const void *dA16, float* merged, size_t M, size_t N);
 
 struct split_variant
 {
@@ -55,15 +55,15 @@ struct measurementConfiguration
 struct run
 {
     // Matrix dimensions
-    int M;
-    int N;
-    int K;
+    size_t M;
+    size_t N;
+    size_t K;
     // Actually executed flops per precision (fp16 means on tensor core)
-    long flops16;
-    long flops32;
-    long flops64;
+    size_t flops16;
+    size_t flops32;
+    size_t flops64;
     // Theoretical, mathematical number of flops
-    long math_flops;
+    size_t math_flops;
     double *timings;
     struct precisionMeasurement *precMs;
 };
@@ -81,13 +81,13 @@ struct precisionMeasurement
 };
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int warmupIterations, int M, int K, int N, MatMul<T> func, LCG rng);
+flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng);
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);
 
-flop_counts matmul_flopcount_32(int M, int K, int N);
-flop_counts matmul_flopcount_64(int M, int K, int N);
+flop_counts matmul_flopcount_32(size_t M, size_t K, size_t N);
+flop_counts matmul_flopcount_64(size_t M, size_t K, size_t N);
 
 
 #endif // FUNCTIONTIMER_H

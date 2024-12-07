@@ -7,7 +7,7 @@
 #include "../cuda_utils.h"
 #include "../timer.h"
 
-flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, int N) {
+flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, size_t M, size_t K, size_t N) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
 
@@ -62,7 +62,7 @@ flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, int M, int K, in
     return counts;
 }
 
-flop_counts matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, int M, int K, int N) {
+flop_counts matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, size_t M, size_t K, size_t N) {
     const double alpha = 1.0f;
     const double beta = 0.0f;
 

@@ -23,7 +23,7 @@
 template<int BlockSizeM, int BlockSizeN, int KStep, 
          int WarpSizeM, int WarpSizeN,
          int FragSizeM, int FragSizeK, int FragSizeN>
-__global__ void matmul_markidis_kernel(float *A, float *B, float *C, int M, int K, int N)
+__global__ void matmul_markidis_kernel(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -110,7 +110,7 @@ __global__ void matmul_markidis_kernel(float *A, float *B, float *C, int M, int 
             wmma::store_matrix_sync(C + offsetC + (m * FragSizeM * N + n * FragSizeN) , cFrag[m][n], N, wmma::mem_row_major);
 }
 
-flop_counts matmul_markidis(float *A, float *B, float *C, int M, int K, int N) 
+flop_counts matmul_markidis(float *A, float *B, float *C, size_t M, size_t K, size_t N) 
 {
     const int BLOCK_SIZE_M = 64;
     const int BLOCK_SIZE_N = 64;
