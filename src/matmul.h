@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "timer.h"
+#include "rand.h"
 
 flop_counts matmul_reference32(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_reference64(double *A, double *B, double *C, size_t M, size_t K, size_t N);
@@ -37,6 +38,7 @@ flop_counts matmul_cuBLAS32(float *A, float *B, float *C, size_t M, size_t K, si
 flop_counts matmul_cuBLAS64(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
 // Ozaki paper uses A [m, n] and B [n, p] matrices
+void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t max_splits);
 template<int version>
 flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 

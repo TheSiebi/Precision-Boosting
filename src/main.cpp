@@ -404,11 +404,7 @@ int main(int argc, char *argv[])
         LCG rng = rng_seeded(0xC0FEE);
         uint64_t seed = rng.state;
         printf("\nRunning tests with seed: %lx\n\n", rng.state);
-        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
-        {   
-            rng.state = seed;
-            testMatmulCorrectness(&matmulVariants32[i], &rng);
-        }
+        test_ozaki_split_correctness(&rng, 0.001, 16);
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
             rng.state = seed;

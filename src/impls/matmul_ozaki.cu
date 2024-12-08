@@ -1,3 +1,4 @@
+#include "ozaki.h"
 #include <cstdint>
 
 #include <algorithm>
