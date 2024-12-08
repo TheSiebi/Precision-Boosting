@@ -13,8 +13,6 @@
 #define PROFILE_SEGMENT_END()
 #define PROFILE_SEGMENT_FUNCTION_END()
 #define PROFILE_FUNCTION_END() 
-void profiler_reset();
-void profiler_segments_print(long flops16, long flops32, long flops64);
 
 #else //NPROFILER
 #include <stdio.h>
@@ -67,16 +65,6 @@ extern struct profile_segment *profile_segment_current;
 
 #define PROFILE_FUNCTION_END() PROFILE_SEGMENT_END()
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void profiler_reset();
-void profiler_segments_print(long flops16, long flops32, long flops64);
-
-#ifdef __cplusplus
-}
-#endif
 
 static inline void profile_segment_start(struct profile_segment *segment)
 {
@@ -151,5 +139,16 @@ static inline void profile_segments_end()
     profile_segment_current->childTime += counter;
 }
 #endif //NPROFILER
+       
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void profiler_reset();
+void profiler_segments_print(long flops16, long flops32, long flops64);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //PROFILER_H

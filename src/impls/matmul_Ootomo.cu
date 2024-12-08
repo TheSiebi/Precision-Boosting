@@ -645,7 +645,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         split_2<float, half><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1], 2048.0f);
         PRINT_ON_ERROR(cudaGetLastError());
 
-        PRINT_ON_ERROR(cudaDeviceSynchronize());
+        CUDA_DEVICE_SYNCHRONIZE();
     }
 
     PROFILE_SEGMENTS_SWITCH("matmul");
@@ -726,7 +726,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         }
     }
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     if constexpr(version == 0)
     {
@@ -735,7 +735,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         merge_2<float, float, false><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 2048.0f);
         PRINT_ON_ERROR(cudaGetLastError());
 
-        PRINT_ON_ERROR(cudaDeviceSynchronize());
+        CUDA_DEVICE_SYNCHRONIZE();
     }
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
@@ -858,7 +858,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, s
         split_2<double, float><<<K * N / threadsPerBlock, threadsPerBlock>>>(deviceBFull, deviceB[0], deviceB[1], 1 << 24);
         PRINT_ON_ERROR(cudaGetLastError());
 
-        PRINT_ON_ERROR(cudaDeviceSynchronize());
+        CUDA_DEVICE_SYNCHRONIZE();
     }
 
     PROFILE_SEGMENTS_SWITCH("matmul");
@@ -896,7 +896,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, s
         }
     } 
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     if constexpr(version == 0)
     {
@@ -905,7 +905,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, s
         merge_2<float, double, true><<<M * N / threadsPerBlock, threadsPerBlock>>>(deviceCFull, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 1 << 24);
         PRINT_ON_ERROR(cudaGetLastError());
 
-        PRINT_ON_ERROR(cudaDeviceSynchronize());
+        CUDA_DEVICE_SYNCHRONIZE();
     }
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");

@@ -58,20 +58,20 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     split_2<float, half><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB[0], deviceB[1], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < 4; i++)
     {
         matmulTensorCores<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
     }
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
     merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
               (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSize, cudaMemcpyDeviceToHost));
@@ -163,7 +163,7 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
     split_cuda_double<splitCount, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale);
     PRINT_ON_ERROR(cudaGetLastError());
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < mergeCount; i++)
@@ -180,12 +180,12 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
         if (factor > 1.0)
             divide_cuda<mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, factor);
     }
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
     merge_cuda_double<mergeCount, mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSizeD, cudaMemcpyDeviceToHost));
@@ -287,7 +287,7 @@ flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C,
     split_cuda_double_double<splitCount><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N);
     PRINT_ON_ERROR(cudaGetLastError());
 
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < mergeCount; i++)
@@ -299,12 +299,12 @@ flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C,
         double scale = std::pow(2048, mergePattern[i].first) * std::pow(2048, mergePattern[i].second);
         divide_cuda<double><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, scale);
     }
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
     merge_cuda_double<mergeCount><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
-    PRINT_ON_ERROR(cudaDeviceSynchronize());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
     PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSizeD, cudaMemcpyDeviceToHost));

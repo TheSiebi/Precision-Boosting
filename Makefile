@@ -8,7 +8,7 @@ BASE_FLAGS=$(USER_FLAGS) -Wall -Wextra -Wpedantic -g -ffp-contract=off -DSM_VERS
 CPP_FLAGS=$(BASE_FLAGS) -std=gnu++2a -Wno-missing-field-initializers
 OPT_FLAGS=$(CPP_FLAGS) -O3
 DEBUG_FLAGS=$(CPP_FLAGS) -O0 -fsanitize=address
-CUDA_FLAGS= -g -arch=native -DSM_VERSION=$(SM_VERSION)
+CUDA_FLAGS= $(USER_FLAGS) -g -arch=native -DSM_VERSION=$(SM_VERSION)
 CUDA_DEBUG_FLAGS=$(CUDA_FLAGS) -G -Xptxas -v
 
 CC=gcc
@@ -101,7 +101,7 @@ plot:
 	bash ./plot.sh $(TYPE)
 
 clean:
-	rm -r ./build
+	rm -f -r ./build
 
 clear_cache:
 	rm -r ./matcache/*
