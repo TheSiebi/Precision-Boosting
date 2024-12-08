@@ -1,5 +1,6 @@
 #include "timer.h"
 
+#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -10,6 +11,7 @@
 #include "../lib/cjson/cJSON.h"
 #include "precision.h"
 #include "matcache.h"
+#include "cuda_utils.h"
 
 
 #define NS_PER_SECOND 1e9
@@ -119,11 +121,12 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
-    T* A = (T *) malloc(M * K * sizeof(T));
+    T *A, *B, *C; 
+    PRINT_ON_ERROR(cudaMallocHost(&A, M * K * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&B, K * N * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
     gen_urand<T>(&rng, A, M * K);
-    T* B = (T *) malloc(K * N * sizeof(T));
     gen_urand<T>(&rng, B, K * N);
-    T* C = (T *) malloc(M * N * sizeof(T));
     flop_counts counts;
 
     for(int i = 0; i < warmupIterations; i++) {
@@ -148,9 +151,9 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
 
-    free(A);
-    free(B);
-    free(C);
+    PRINT_ON_ERROR(cudaFreeHost(A));
+    PRINT_ON_ERROR(cudaFreeHost(B));
+    PRINT_ON_ERROR(cudaFreeHost(C));
 
     return counts;
 }
@@ -168,10 +171,8 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
-    T* A = (T *) malloc(M * K * sizeof(T));
-    T* B = (T *) malloc(K * N * sizeof(T));
-    T* C = (T *) calloc(M * N, sizeof(T));
-    T* C_ref = (T *) calloc(M * N, sizeof(T));
+    T *A, *B, *C, *C_ref;
+    PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
 
     for(int i = 0; i < iterations; i++) {
         printf("\r\tType %d Precision Measurement Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", input_type, i + 1, iterations, M, K, N);
@@ -191,10 +192,10 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
     }
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
-    free(A);
-    free(B);
-    free(C);
-    free(C_ref);
+    PRINT_ON_ERROR(cudaFreeHost(A));
+    PRINT_ON_ERROR(cudaFreeHost(B));
+    PRINT_ON_ERROR(cudaFreeHost(C));
+    PRINT_ON_ERROR(cudaFreeHost(C_ref));
 }
 
 

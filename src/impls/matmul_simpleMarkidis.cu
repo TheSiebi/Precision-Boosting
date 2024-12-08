@@ -15,7 +15,7 @@
 
 #include "matmul_cuda.h"
 
-template<int version>
+template<int version, int streamCount>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t K, size_t N) 
 {
     assert((M % 16) == 0);
@@ -23,6 +23,11 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     assert((N % 16) == 0);
 
     PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
+
+    cudaStream_t streams[streamCount];
+    for(int i = 0; i < streamCount; i++)
+        PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
+
 
     size_t ASize = M * K * sizeof(half);
     size_t BSize = K * N * sizeof(half);
@@ -36,7 +41,6 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     float *deviceAFull, *deviceBFull;
     for(int i = 0; i < 2; i++)
     {
-        cudaGetLastError();
         PRINT_ON_ERROR(cudaMalloc(&deviceA[i], ASize));
         PRINT_ON_ERROR(cudaMalloc(&deviceB[i], BSize));
     }
@@ -46,18 +50,35 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     PRINT_ON_ERROR(cudaMalloc(&deviceAFull, M*K*sizeof(float)));
     PRINT_ON_ERROR(cudaMalloc(&deviceBFull, K*N*sizeof(float)));
 
-    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
+    PROFILE_SEGMENTS_SWITCH("memcpy h2d & split");
 
-    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, M*K*sizeof(float), cudaMemcpyHostToDevice));
-    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, K*N*sizeof(float), cudaMemcpyHostToDevice));
+    size_t copyCountA = (M*K)/streamCount;
+    size_t copySizeA = copyCountA * sizeof(float);
+    size_t copyCountB = (K*N)/streamCount;
+    size_t copySizeB = copyCountB * sizeof(float);
+    for(int i = 0; i < streamCount; i++)
+    {
+        size_t offsetA = copyCountA * i;
+        size_t offsetB = copyCountB * i;
+        PRINT_ON_ERROR(
+                cudaMemcpyAsync(deviceAFull + offsetA, 
+                                 A + offsetA, copySizeA, 
+                                 cudaMemcpyHostToDevice, streams[i])
+        );
+        PRINT_ON_ERROR(
+                cudaMemcpyAsync(deviceBFull + offsetB, 
+                                 B + offsetB, copySizeB, 
+                                cudaMemcpyHostToDevice, streams[i])
+        );
+        split_2<float, half>
+               <<<DivRoundUp(copyCountA, 256), 256, 0, streams[i]>>>
+               (deviceAFull + offsetA, deviceA[0] + offsetA, deviceA[1] + offsetA, 1.0f);
+        split_2<float, half>
+               <<<DivRoundUp(copyCountB, 256), 256, 0, streams[i]>>>
+               (deviceBFull + offsetB, deviceB[0] + offsetB, deviceB[1] + offsetB, 1.0f);
+    }
 
-    PROFILE_SEGMENTS_SWITCH("split");
-
-    split_2<float, half><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA[0], deviceA[1], 1.0f);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_2<float, half><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB[0], deviceB[1], 1.0f);
-    PRINT_ON_ERROR(cudaGetLastError());
-
     CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("matmul");
@@ -89,6 +110,9 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     PRINT_ON_ERROR(cudaFree(deviceAFull));
     PRINT_ON_ERROR(cudaFree(deviceBFull));
 
+    for(int i = 0; i < streamCount; i++)
+        PRINT_ON_ERROR(cudaStreamDestroy(streams[i]));
+
     PROFILE_SEGMENT_FUNCTION_END();
 /**
  * Flop counts of markidis should be very similar to Ootomo, with the difference that we
@@ -115,10 +139,10 @@ void divide_cuda(Type *C, int N, double scale)
         C[i] /= scale;
 }
 
-template flop_counts matmul_simpleMarkidis<0>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<2>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<3>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<0, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<1, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<2, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<3, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
 template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N,

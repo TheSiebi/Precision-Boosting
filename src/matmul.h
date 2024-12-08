@@ -17,7 +17,7 @@ flop_counts matmul_v0(double *A, double *B, double *C, size_t M, size_t K, size_
 template<typename InpuType, typename OutputType, int version, bool useTensorCores>
 flop_counts matmul_cuda(InpuType *A, InpuType *B, OutputType *C, size_t M, size_t K, size_t N);
 
-template<int version>
+template<int version, int streamCount>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t K, size_t N); 
 flop_counts matmul_markidis(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 

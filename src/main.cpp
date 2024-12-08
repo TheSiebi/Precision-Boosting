@@ -9,7 +9,9 @@
 #include "rand.h"
 #include "precision.h"
 #include "matcache.h"
+#include "cuda_utils.h"
 
+#include <cuda_runtime.h>
 #include <iostream>
 #include <iomanip>
 #include <string.h>
@@ -22,25 +24,25 @@ const int FUNCTION_NAME_WIDTH = 40;
 matmul_variant<float> matmulVariants32[] =
 {
     {
-        .function = matmul_simpleMarkidis<0>,
+        .function = matmul_simpleMarkidis<0, 1>,
         .name = "Simple Markidis v0",
         .description = "Simple markidis with simple tensor matmul",
         .highestPerforming = false,
     },
     {
-        .function = matmul_simpleMarkidis<1>,
+        .function = matmul_simpleMarkidis<1, 1>,
         .name = "Simple Markidis v1",
         .description = "Simple markidis with multiple warps per block",
         .highestPerforming = false,
     },
     {
-        .function = matmul_simpleMarkidis<2>,
+        .function = matmul_simpleMarkidis<2, 1>,
         .name = "Simple Markidis v2",
         .description = "Simple markidis with shared memory",
         .highestPerforming = false,
     },
     {
-        .function = matmul_simpleMarkidis<3>,
+        .function = matmul_simpleMarkidis<3, 1>,
         .name = "Simple Markidis v3",
         .description = "Simple markidis with shared memory",
         .highestPerforming = true,
@@ -307,7 +309,8 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         N = 1 << next_int(rng, 7, 9);
 
         // Get matrices
-        T *C = (T*) calloc(M * N,  sizeof(T));
+        T *C;
+        PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
 
         for (size_t input_type = 0; input_type < NUM_TYPES; input_type++) {
             auto [A, B, C_reference] = getMatrices<T>(M, K, N, input_type, rng);
@@ -345,10 +348,9 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
                     std::cout << "\t" << "Error:    \033[33m" << rel_err << "\033[0m (rel) \033[33m" << abs_err << "\033[0m (abs)" << std::endl;
                 }
             }
-            
-            free(A);
-            free(B);
-            free(C_reference);
+            PRINT_ON_ERROR(cudaFreeHost(A));
+            PRINT_ON_ERROR(cudaFreeHost(B));
+            PRINT_ON_ERROR(cudaFreeHost(C_reference));
 
             if (failed) {
                 break;
@@ -356,7 +358,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         }
 
         // Free memory
-        free(C);
+        PRINT_ON_ERROR(cudaFreeHost(C));
 
         if (failed) {
             break;
@@ -433,10 +435,10 @@ int main(int argc, char *argv[])
         */
 
         
+        profile(matmulVariants32[3], 1, 5, 8192, 8192, 8192);
         /*
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants32[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[4], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[5], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[6], 0, 1, 8192, 8192, 8192);

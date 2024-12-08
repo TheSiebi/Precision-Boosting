@@ -29,7 +29,7 @@ OBJ_FILES+=build/test_ozaki_split.o
 
 
 build: prepareBuild $(OBJ_FILES)
-	$(CPP) $(OPT_FLAGS) src/main.cpp $(OBJ_FILES) -o build/main -lm -lcudart -lcublas
+	nvcc $(CUDA_FLAGS) src/main.cpp $(OBJ_FILES) -o build/main -lm -lcudart -lcublas
 
 prepareBuild:
 	$(info SM_VERSION: $(SM_VERSION))
@@ -40,7 +40,7 @@ build/profiler.o: src/profiler.c
 	$(CC) $(BASE_FLAGS) -O3 -c src/profiler.c -o $@
 
 build/timer.o: src/timer.cpp
-	$(CPP) $(OPT_FLAGS) -c src/timer.cpp -o $@
+	nvcc $(CUDA_FLAGS) -c src/timer.cpp -o $@
 
 build/rand.o: src/rand.cpp
 	$(CPP) $(OPT_FLAGS) -c src/rand.cpp -o $@
@@ -53,7 +53,7 @@ build/cJSON.o: lib/cjson/cJSON.c
 
 build/matcache.o: src/matcache.cpp
 	mkdir -p matcache
-	$(CPP) $(OPT_FLAGS) -c src/matcache.cpp -o $@
+	nvcc $(CUDA_FLAGS) -c src/matcache.cpp -o $@
 
 build/matmul_reference.o: src/impls/matmul_reference.cu
 	nvcc $(CUDA_FLAGS) -c src/impls/matmul_reference.cu -o $@

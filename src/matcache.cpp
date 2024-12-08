@@ -1,10 +1,13 @@
 #include <string>
 #include <tuple>
 #include <sstream>
+#include <cuda_runtime.h>
 #include "matcache.h"
 #include "rand.h"
 #include "matmul.h"
 #include "precision.h"
+#include "cuda_utils.h"
+
 
 // Generate a filename based on matmul dimensions, generation schema, precision and operand (A, B, or C)
 std::string generateFilename(size_t M, size_t K, size_t N, char operand, const std::string& schema, const std::string& precision) {
@@ -80,9 +83,10 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     if (existsA && existsB && existsC) {
         // All matrices exist; load them
         //printf("Matrices already exist; loading them\n");
-        T* A = (T*)malloc(M * K * sizeof(T));
-        T* B = (T*)malloc(K * N * sizeof(T));
-        T* C = (T*)malloc(M * N * sizeof(T));
+        T *A, *B, *C;
+        PRINT_ON_ERROR(cudaMallocHost(&A, M * K * sizeof(T)));
+        PRINT_ON_ERROR(cudaMallocHost(&B, K * N * sizeof(T)));
+        PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
 
         FILE* fileA = fopen(filenameA.c_str(), "rb");
         FILE* fileB = fopen(filenameB.c_str(), "rb");
@@ -100,9 +104,9 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
             return {A, B, C};
         } else {
             perror("MatCache: Failed to read matrices, regenerating them");
-            free(A);
-            free(B);
-            free(C);
+            PRINT_ON_ERROR(cudaFreeHost(A));
+            PRINT_ON_ERROR(cudaFreeHost(B));
+            PRINT_ON_ERROR(cudaFreeHost(C));
         }
     }
 
@@ -133,7 +137,7 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     storeMatrix(B, M, K, N, 'B', schema);
     storeMatrix(C, M, K, N, 'C', schema);
 
-    return {A, B, C};
+    return getMatrices<T>(M, K, N, input_type, rng);
 }
 
 
