@@ -1,5 +1,6 @@
 #include "ozaki.h"
 #include <cstdint>
+#include <cstdio>
 
 #include <algorithm>
 #include <stdexcept>
@@ -12,6 +13,8 @@
 #include "../matmul.h"
 
 #include <cuda_fp16.h>
+
+#define MAX_SPLITS 10
 
 size_t ix(size_t row, size_t col, size_t rows, size_t cols)
 {
@@ -58,8 +61,8 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
     int k = 1;
 
     // beta = fl(...)
-    const float log2u = -11.f; // half precision
-    const float beta = ceilf((-log2u + log2f(q)) / 2.f);
+    const double log2u = -11.f; // half precision
+    const double beta = ceil((-log2u + log2(q)) / 2.0);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<half>> D = { std::vector<half>(m * n, __float2half(0.f)) };
@@ -84,12 +87,12 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
         }
 
         // w = fl(...);
-        std::vector<half> w(m);
+        std::vector<double> w(m);
         for (size_t i = 0; i < m; ++i)
-            w[i] = __float2half(exp2f(ceilf((float) log2f(mu[i])) + beta));
+            w[i] = exp2(ceil(log2(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
-        std::vector<half> S(m * n);
+        std::vector<double> S(m * n);
         for (size_t i = 0; i < m; ++i)
             for (size_t j = 0; j < n; ++j)
                 S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
@@ -99,9 +102,12 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
         D.resize(k, std::vector<half>(m * n));
         for (size_t ij = 0; ij < m * n; ++ij)
         {
-            D[k - 1][ij] = __float2half((float) (a[ij] + __half2float(S[ij])));
-            D[k - 1][ij] = __float2half(__half2float(D[k - 1][ij]) - __half2float(S[ij]));
-            a[ij] = __float2half(__half2float(a[ij]) - __half2float(D[k - 1][ij]));
+            // Note: unclear from paper whether ((A+S)-S) computation should happen as double or half
+            double intermediate = a[ij] + S[ij];
+            asm volatile("" : : "r,m"(intermediate) : "memory"); // avoid compiler optimizations
+            intermediate -= S[ij];
+            D[k - 1][ij] = __float2half((float) intermediate);
+            a[ij] -= __half2float(D[k - 1][ij]);
         }
 
         // % Checking sparsity of D{k}
@@ -219,9 +225,6 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
 template<int version>
 std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const size_t p, double* a, double* b, int64_t* nA_ptr, int64_t* nB_ptr)
 {
-    // Limit number of splits
-    const size_t MAX_SPLITS = 30;
-
     // [m, n] = size(A); [n, p] = size(B);
     // Given as parameters
 
@@ -274,9 +277,6 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
         const auto nB = E.size();
         *nB_ptr = (int) nB;
 
-        std::cout << "nA: " << nA << "/" << MAX_SPLITS << ", ";
-        std::cout << "nB: " << nB << "/" << MAX_SPLITS << "\n";
-
         int t = 0;
         std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
         for (int r = 0; r < nA; ++r)
@@ -304,7 +304,8 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
 
     PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul<version>(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
-    std::cout << "size: " << sizeof(unevaluated_sum[0][0]) << "\n";
+    // std::cout << "nA: " << nA << "/" << MAX_SPLITS << ", ";
+    // std::cout << "nB: " << nB << "/" << MAX_SPLITS << "\n";
     memset(c, 0, m * p * sizeof(double));
     for (size_t ij = 0; ij < m * p; ++ij)
         for (const auto& matrix: unevaluated_sum)

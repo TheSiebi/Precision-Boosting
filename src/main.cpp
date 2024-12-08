@@ -97,16 +97,22 @@ matmul_variant<double> matmulVariants64[] =
         .description = "cuBLAS",
         .highestPerforming = true,
     },
-    {
-        .function = matmul_ozaki<0>,
-        .name = "Matmul Ozaki v0",
-        .description = "Ozaki FP64 using FP32 on CPU",
-        .highestPerforming = false,
-    },
+    // {
+    //     .function = matmul_ozaki<0>,
+    //     .name = "Matmul Ozaki v0",
+    //     .description = "Ozaki FP64 using FP32 on CPU",
+    //     .highestPerforming = false,
+    // },
     {
         .function = matmul_ozaki<1>,
         .name = "Matmul Ozaki v1",
         .description = "Ozaki FP64 using FP32. Matmul on GPU, split-merge on CPU",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_ozaki<2>,
+        .name = "Matmul Ozaki v2",
+        .description = "Ozaki FP64 using FP16. Matmul on GPU, split-merge on CPU",
         .highestPerforming = true,
     },
     {
@@ -404,7 +410,6 @@ int main(int argc, char *argv[])
         LCG rng = rng_seeded(0xC0FEE);
         uint64_t seed = rng.state;
         printf("\nRunning tests with seed: %lx\n\n", rng.state);
-        test_ozaki_split_correctness(&rng, 0.001, 16);
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
             rng.state = seed;
@@ -415,6 +420,7 @@ int main(int argc, char *argv[])
             rng.state = seed;
             testSplitCorrectness(&splitVariants[i], &rng);
         }
+        test_ozaki_split_correctness(&rng, 0.0002, 10, false);
         
         /*        
         profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
