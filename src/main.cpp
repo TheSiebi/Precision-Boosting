@@ -43,7 +43,13 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_simpleMarkidis<3, 1>,
-        .name = "Simple Markidis v3",
+        .name = "Simple Markidis v3 stream:1",
+        .description = "Simple markidis with shared memory",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_simpleMarkidis<3, 4>,
+        .name = "Simple Markidis v3 stream:4",
         .description = "Simple markidis with shared memory",
         .highestPerforming = true,
     },
@@ -412,6 +418,11 @@ int main(int argc, char *argv[])
         LCG rng = rng_seeded(0xC0FEE);
         uint64_t seed = rng.state;
         printf("\nRunning tests with seed: %lx\n\n", rng.state);
+        for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++)
+        {
+            rng.state = seed;
+            testMatmulCorrectness(&matmulVariants32[i], &rng);
+        }
         for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++)
         {
             rng.state = seed;
@@ -436,6 +447,7 @@ int main(int argc, char *argv[])
 
         
         profile(matmulVariants32[3], 1, 5, 8192, 8192, 8192);
+        profile(matmulVariants32[4], 1, 5, 8192, 8192, 8192);
         /*
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);

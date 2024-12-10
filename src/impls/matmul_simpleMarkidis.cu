@@ -143,6 +143,7 @@ template flop_counts matmul_simpleMarkidis<0, 1>(float *A, float *B, float *C, s
 template flop_counts matmul_simpleMarkidis<1, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template flop_counts matmul_simpleMarkidis<2, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template flop_counts matmul_simpleMarkidis<3, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<3, 4>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
 template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N,
