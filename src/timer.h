@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <cuda_fp16.h>
 #include <stdbool.h>
 #include "rand.h"
 
@@ -85,6 +86,8 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);
+
+void timeExponentiation(struct matmul_variant<half> *function, char *path, LCG rng);
 
 flop_counts matmul_flopcount_32(size_t M, size_t K, size_t N);
 flop_counts matmul_flopcount_64(size_t M, size_t K, size_t N);

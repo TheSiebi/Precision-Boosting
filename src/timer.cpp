@@ -1,4 +1,5 @@
 #include "timer.h"
+#include "matmul.h"
 
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -158,6 +159,7 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
     return counts;
 }
 
+template flop_counts timeRun<half>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<half> func, LCG rng);
 template flop_counts timeRun<float>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
 template flop_counts timeRun<double>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
 
@@ -289,6 +291,64 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
 
 template void timeFunction<float>(matmul_variant<float> *function, char *path, LCG rng);
 template void timeFunction<double>(matmul_variant<double> *function, char *path, LCG rng);
+
+void timeExponentiation(matmul_variant<half> *function, char *path, LCG rng) {
+    printf("Benchmark %s\n", function->name);
+    int powerOfMaxSize = 13;
+    int powerOfMinSize = 7;
+    int numSizes = powerOfMaxSize - powerOfMinSize + 1;
+    const int numInputTypes = 5;
+    const int maxIterationsPerConfig = 50;
+    const int maxIterationsPerInputType = maxIterationsPerConfig / numInputTypes;
+    int *iterationsPerConfig = (int*) calloc(numSizes, sizeof(*iterationsPerConfig));
+    int *precisionIterationsPerInputType = (int*) calloc(numSizes, sizeof(*precisionIterationsPerInputType));
+    const int warmupIterations = 1;
+
+    struct measurementConfiguration runConfig = {
+        .cpuModel = CPU,
+        .gpuModel = GPU,
+        .targetFunction = function->name,
+    };
+
+    double *timings = (double*) calloc(numSizes * maxIterationsPerConfig, sizeof(*timings));
+    struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
+    for (int i = 0; i < numSizes; i++)
+    {
+        size_t n = 1 << (i + powerOfMinSize);
+
+        // Adapt number of iterations based on heuristics on runtime
+        iterationsPerConfig[i] = maxIterationsPerConfig;
+        precisionIterationsPerInputType[i] = 0;
+
+        if (n >= 1 << 13) {
+            iterationsPerConfig[i] = 1;
+        } else if (n >= 1 << 12) {
+            iterationsPerConfig[i] = 5;
+        }
+
+        flop_counts counts = timeRun<half>(&timings[i * maxIterationsPerConfig], iterationsPerConfig[i], warmupIterations, n, n, n, function->function, rng);
+
+        struct run run = {
+            .M = n,
+            .N = n,
+            .K = n,
+            .flops16 = counts.flops16,
+            .flops32 = counts.flops32,
+            .flops64 = counts.flops64,
+            .math_flops = 2L*n*n*n*matmul_exponent,
+            .timings = &timings[i * maxIterationsPerConfig],
+        };
+        runs[i] = run;
+    }
+    struct measurement measurement = {
+        .configuration = runConfig,
+        .runs = runs
+    };
+    write_measurement_to_file(&measurement, path, function->name, numSizes, numInputTypes, iterationsPerConfig, precisionIterationsPerInputType);
+
+    free(iterationsPerConfig);
+    free(runs);
+}
 
 flop_counts matmul_flopcount_32(size_t M, size_t K, size_t N) {
     flop_counts counts;

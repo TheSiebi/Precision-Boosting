@@ -8,6 +8,7 @@ delete_empty() {
 }
 
 timestamp=$(date +'%Y_%m_%dT%H-%M-%S')
+folder16="timings/${timestamp}_FP16"
 folder32="timings/${timestamp}_FP32"
 folder64="timings/${timestamp}_FP64"
 
@@ -16,12 +17,15 @@ make USER_FLAGS=-DNPROFILER
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo "No argument passed. Generating plots for both FP32 and FP64"
+    echo "No argument passed. Generating plots for FP16, FP32 and FP64"
+    mkdir -p $folder16
     mkdir -p $folder32
     mkdir -p $folder64
+    ./build/main 16 -p $folder16
     ./build/main 32 -p $folder32
     ./build/main 64 -p $folder64
 
+    python3 scripts/plotting.py --input_folder $folder16
     python3 scripts/plotting.py --input_folder $folder32
     python3 scripts/plotting.py --input_folder $folder64
     python3 scripts/plotting.py --input_folder $folder32 --compare
@@ -31,8 +35,13 @@ if [ -z "$1" ]; then
     python3 scripts/plotting.py --input_folder $folder32 --precision
     python3 scripts/plotting.py --input_folder $folder64 --precision
 else
-    # Argument passed (either 32 or 64), generate plots for the specific one
-    if [ "$1" -eq 32 ]; then
+    # Argument passed (either 16, 32 or 64), generate plots for the specific one
+    if [ "$1" -eq 16 ]; then
+        echo "Generating FP16 plots"
+        mkdir -p $folder16
+        ./build/main 16 -p $folder16
+        python3 scripts/plotting.py --input_folder $folder16
+    elif [ "$1" -eq 32 ]; then
         echo "Generating FP32 plots"
         mkdir -p $folder32
         ./build/main 32 -p $folder32
@@ -49,10 +58,11 @@ else
         # python3 scripts/plotting.py --input_folder $folder64 --speedup
         python3 scripts/plotting.py --input_folder $folder64 --precision
     else
-        echo "Invalid argument. Please provide 32 or 64."
+        echo "Invalid argument. Please provide 16, 32 or 64."
     fi
 fi
 
+delete_empty "$folder16"
 delete_empty "$folder32"
 delete_empty "$folder64"
 

@@ -23,6 +23,7 @@ OBJ_FILES+=build/matmul_cuda.o build/split_v0.o build/merge_accumulate_v0.o buil
 OBJ_FILES+=build/matmul_cuBLAS.o
 OBJ_FILES+=build/matmul_ozaki.o
 OBJ_FILES+=build/test_ozaki_split.o
+OBJ_FILES+=build/matmul_exponentiation.o
 
 
 .PHONY: build
@@ -93,6 +94,9 @@ build/matmul_ozaki.o: src/impls/matmul_ozaki.cu
 
 build/test_ozaki_split.o: src/impls/test_ozaki_split.cu # requires nvcc
 	nvcc $(CUDA_FLAGS) -c src/impls/test_ozaki_split.cu -o $@
+
+build/matmul_exponentiation.o: src/impls/matmul_exponentiation.cu
+	nvcc $(CUDA_FLAGS) -c src/impls/matmul_exponentiation.cu -o $@
 
 run:
 	./build/main

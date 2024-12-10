@@ -21,6 +21,16 @@
 
 const int FUNCTION_NAME_WIDTH = 40;
 
+matmul_variant<half> matmulVariants16[] =
+{
+    {
+        .function = matmul_exponentiation,
+        .name = "Matrix Exponentiation",
+        .description = "Exponentiation using tensor cores",
+        .highestPerforming = true,
+    }
+};
+
 matmul_variant<float> matmulVariants32[] =
 {
     {
@@ -458,14 +468,29 @@ int main(int argc, char *argv[])
         profile(matmulVariants32[8], 0, 1, 8192, 8192, 8192);
         
         profile(matmulVariants32[9], 0, 1, 8192, 8192, 8192);
-        */        
+        */
+        profile(matmulVariants16[0], 1, 5, 1024, 1024, 1024);
     }
     else
     {
         LCG rng = new_rng();
         uint64_t seed = rng.state;
 
-        if (strcmp(argv[1], "32") == 0)
+        if (strcmp(argv[1], "16") == 0) {
+            // Benchmark half matrix multiplication through matrix exponentiation
+            std::vector<int> timeIndices16;
+            for(size_t i = 0; i < ARRAY_COUNT(matmulVariants16); i++) {
+                if (matmulVariants16[i].highestPerforming) {
+                    timeIndices16.push_back(i);
+                }
+            }
+
+            for(const int value : timeIndices16)
+            {
+                timeExponentiation(&matmulVariants16[value], argv[3], rng);
+                rng.state = seed;
+            }
+        } else if (strcmp(argv[1], "32") == 0)
         {
             //std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
             std::vector<int> timeIndices32;
@@ -495,7 +520,7 @@ int main(int argc, char *argv[])
                 rng.state = seed;
             }
         } else {
-            printf("Usage: %s 32|64\n", argv[0]);
+            printf("Usage: %s 16|32|64\n", argv[0]);
         }
 
         
