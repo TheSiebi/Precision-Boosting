@@ -22,6 +22,8 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
 flop_counts matmul_markidis(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
 template<int version>
+flop_counts matmul_simpleMarkidis_float(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template<int version>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
 template<int version>
