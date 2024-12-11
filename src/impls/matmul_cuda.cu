@@ -778,6 +778,10 @@ constexpr struct matmulScalesTensor getArgScales(int configuration) {
     {
         return {4, 4, 2, 2, 2};
     }
+    else if (configuration == 3)
+    {
+        return {8, 16, 2, 4, 4};
+    }
     // Warning: Before adding new configuration, make sure
     // that the shared memory of the GPU is large enough to handle the block dimensions
 
@@ -895,7 +899,8 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
         }
         else
         {
-            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<2, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
+            constexpr int configuration = std::is_same<OutputType, half>::value ? 3 : 2;
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<configuration, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
