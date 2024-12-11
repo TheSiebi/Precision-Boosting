@@ -132,7 +132,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
 
 template<typename Type>
 static __global__ 
-void divide_cuda(Type *C, int N, double scale)
+void divide_cuda(Type *C, int N, Type scale)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
@@ -159,12 +159,12 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
 
     PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
 
-    size_t ASizeH = M * K * sizeof(mulInputType);
-    size_t ASizeD = M * K * sizeof(double);
-    size_t BSizeH = K * N * sizeof(mulInputType);
-    size_t BSizeD = K * N * sizeof(double);
-    size_t CSizeF = M * N * sizeof(mulOutputType);
-    size_t CSizeD = M * N * sizeof(double);
+    size_t ASizeS = M * K * sizeof(mulInputType);
+    size_t ASize = M * K * sizeof(double);
+    size_t BSizeS = K * N * sizeof(mulInputType);
+    size_t BSize = K * N * sizeof(double);
+    size_t CSizeO = M * N * sizeof(mulOutputType);
+    size_t CSize = M * N * sizeof(double);
     
     PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
@@ -173,23 +173,23 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
     double *deviceCMerged;
     double *deviceAFull, *deviceBFull;
     cudaGetLastError();
-    PRINT_ON_ERROR(cudaMalloc(&deviceA, ASizeH * splitCount));
-    PRINT_ON_ERROR(cudaMalloc(&deviceB, BSizeH * splitCount));
-    PRINT_ON_ERROR(cudaMalloc(&deviceC, CSizeF * mergeCount));
-    PRINT_ON_ERROR(cudaMalloc(&deviceCMerged, CSizeD));
-    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, ASizeD));
-    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BSizeD));
+    PRINT_ON_ERROR(cudaMalloc(&deviceA, ASizeS * splitCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceB, BSizeS * splitCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceC, CSizeO * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceCMerged, CSize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, ASize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BSize));
 
     PROFILE_SEGMENTS_SWITCH("memcpy host2device");
 
-    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, ASizeD, cudaMemcpyHostToDevice));
-    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSizeD, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, ASize, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
 
     PROFILE_SEGMENTS_SWITCH("split");
 
-    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale);
+    split_n_cuda<splitCount, double, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_cuda_double<splitCount, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale);
+    split_n_cuda<splitCount, double, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale);
     PRINT_ON_ERROR(cudaGetLastError());
 
     CUDA_DEVICE_SYNCHRONIZE();
@@ -201,7 +201,7 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
         size_t bIndex = mergePattern[i].second * K * N;
         size_t cIndex = i * M * N;
         if constexpr(useTensorCores)
-            matmulTensorCores<mulInputType, mulOutputType, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+            matmulTensorCores<mulInputType, mulOutputType, 4>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         else 
             matmulCUDACores<mulInputType, mulType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         
@@ -212,12 +212,12 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
     CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
-    merge_cuda_double<mergeCount, mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
+    merge_n_cuda<mergeCount, mulOutputType, double><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("memcpy device2host");
-    PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSizeD, cudaMemcpyDeviceToHost));
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSize, cudaMemcpyDeviceToHost));
 
     PROFILE_SEGMENTS_SWITCH("free");
 
@@ -230,18 +230,16 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
 
     PROFILE_SEGMENT_FUNCTION_END();
 /**
- * Flop counts of markidis should be very similar to Ootomo, with the difference that we
- * only require one flop32 for splitting an element and similarly for merging.
- * Furthermore, we perform 4 fp16 matmuls instead of 3
+ * Note: the flopCounts should be correct, but they are not necessarily in the right category, as
+ * this would require a case distinction over the template arguments. 
  * 
- * flops16:
- * 4*(2*M*K*N) (4 matmuls)
+ * mergeCount*(2*M*K*N) (4 matmuls)
  * 
- * flops32:
- * M*K + K*N (splitting A and B)
- * + 3*N*M (merging into C)
+ * 4*splitCount(M*K + K*N) (splitting A and B)
+ * 
+ * mergeCount*N*M (merging into C)
  */
-    flop_counts counts = {8L*M*K*N, M*K + K*N + 3L*N*M, 0L};
+    flop_counts counts = {(long)mergeCount*2L*M*K*N, 4L*(long)splitCount*(M*K + K*N) + (long)mergeCount*N*M, 0L};
     return counts;
 }
 
@@ -377,7 +375,7 @@ flop_counts matmul_simpleMarkidis_double_double(double *A, double *B, double *C,
     CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
-    merge_cuda_double<mergeCount><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
+    merge_n_cuda<mergeCount, double, double><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();
 

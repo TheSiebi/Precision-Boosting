@@ -22,23 +22,38 @@ __device__ returnType split_element(srcType elem);
 __global__ void split_4_tree(double *A, half *dA_high, half *dA_middleUp, half *dA_middleDown, half *dA_low);
 
 
-template<int splitCount, typename trgtType>
+template<int splitCount, typename srcType, typename trgtType>
 __global__
-void split_cuda_double(double *A, trgtType *ASplit, int N, double scale)
+void split_n_cuda(srcType *A, trgtType *ASplit, int N, srcType scale)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
     {
-        double residual = A[i];
-        double factor = 1;
+        srcType residual = A[i];
+        srcType factor = 1.0;
         #pragma unroll
         for(int j = 0; j < splitCount; j++)
         {
             trgtType mainPart = (trgtType)(residual * factor);
             ASplit[j*N+i] = mainPart;
-            residual -= (double)mainPart / factor;
+            residual -= (srcType)mainPart / factor;
             factor *= scale;
         }
+    }
+}
+
+template<int mergeCount, typename srcType, typename trgtType>
+__global__ 
+void merge_n_cuda(srcType *CSplit, trgtType *C, int N)
+{
+    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    if(i < N)
+    {
+        trgtType result = 0;
+        #pragma unroll
+        for(int j = 0; j < mergeCount; j++)
+            result += (trgtType)CSplit[j*N+i];
+        C[i] = result;
     }
 }
 
@@ -61,21 +76,5 @@ void split_cuda_double_double(double *A, double *ASplit, int N)
         }
     }
 }
-
-template<int splitCount, typename srcType>
-__global__ 
-void merge_cuda_double(srcType *CSplit, double *C, int N)
-{
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
-    if(i < N)
-    {
-        double result = 0;
-        #pragma unroll
-        for(int j = 0; j < splitCount; j++)
-            result += (double)CSplit[j*N+i];
-        C[i] = result;
-    }
-}
-
 
 #endif // SPLIT_MERGE_CUDA_H
