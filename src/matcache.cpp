@@ -117,15 +117,16 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     }
 
     // None of the matrices exist; generate them
-    T* A = (T*)malloc(M * K * sizeof(T));
-    T* B = (T*)malloc(K * N * sizeof(T));
-    T* C = (T*)malloc(M * N * sizeof(T));
+    T *A, *B, *C;
+    PRINT_ON_ERROR(cudaMallocHost(&A, M * K * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&B, K * N * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
 
     if (!A || !B || !C) {
         perror("MatCache: Memory allocation failed");
-        free(A);
-        free(B);
-        free(C);
+        PRINT_ON_ERROR(cudaFreeHost(A));
+        PRINT_ON_ERROR(cudaFreeHost(B));
+        PRINT_ON_ERROR(cudaFreeHost(C));
     }
 
     //printf("Matrices do not exist; generating them\n");
