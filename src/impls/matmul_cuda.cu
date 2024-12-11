@@ -231,6 +231,236 @@ __global__ void matmul_kernel_Tensor_v3(InputType *A, InputType *B, OutputType *
             wmma::store_matrix_sync(C + offsetC + (m * FragSizeM * N + n * FragSizeN) , cFrag[m][n], N, wmma::mem_row_major);
 }
 
+template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
+          const int N_WARP_ROWS_PER_BLOCK,
+          const int N_WARP_COLS_PER_BLOCK,
+          const int N_WMMA_ROWS_PER_WARP,
+          const int N_WMMA_COLS_PER_WARP,
+          const int WMMA_M,
+          const int WMMA_K,
+          const int WMMA_N>
+__global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, float *C, size_t M, size_t K, size_t N)
+{
+    using namespace nvcuda;
+
+    // allocate space for the current blocktile in shared memory
+    __shared__ half As[BM * BK];
+    __shared__ half Bs[BK * BN];
+
+    // Move blocktile to beggining of A's row and B's column
+    const int cRow = blockIdx.x;
+    const int cCol = blockIdx.y;
+    A += cRow * BM * K;
+    B += cCol * BN;
+    C += cRow * BM * N + cCol * BN;
+
+    // warpID in threadBlock
+    const int warpID = threadIdx.x / WARP_SIZE;
+    // thread LaneID in warp
+    // const int laneID = threadIdx.x % WARP_SIZE;
+    // The indices this warp has in the block tile
+    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
+    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+
+    for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
+        for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
+            wmma::fill_fragment(cFrag[i][j], 0.0f);
+
+
+    // Loads are vectorized and each thread will load 4 elements into SMEM
+    const int elemsPerThread = 4;
+    // Calculate indices that this thread will load from GMEM to SMEM
+    // Note that for coalescing, it's important that consecutive threadIDs
+    // access consecutive memory addresses
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
+    // complete #rows that gets loaded in one loading iteration
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+
+    // Loop over all block tiles
+    for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
+    {
+        // populate SMEM cache
+        for (int offset = 0; offset + rowStrideA <= BM; offset += rowStrideA)
+        {
+            reinterpret_cast<half4 *>(&As[(innerRowA + offset) * BK + innerColA * elemsPerThread])[0] =
+                reinterpret_cast<const half4 *>(&A[(innerRowA + offset) * K + innerColA * elemsPerThread])[0];
+        }
+        for (int offset = 0; offset + rowStrideB <= BK; offset += rowStrideB)
+        {
+            reinterpret_cast<half4 *>(&Bs[(innerRowB + offset) * BN + innerColB * elemsPerThread])[0] =
+                reinterpret_cast<const half4 *>(&B[(innerRowB + offset) * N + innerColB * elemsPerThread])[0];
+        }
+
+        __syncthreads();
+
+        // advance blocktile
+        A += BK;
+        B += BK * N;
+
+        // start of data belonging to respective warp
+        int warpOffsetA = warpRow * WM * BK;
+        int warpOffsetB = warpCol * WN;
+        
+        for (int chunk = 0; chunk < CHUNK_K; chunk++)
+        {   
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+                wmma::load_matrix_sync(aFrag[tileRow], As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                wmma::load_matrix_sync(bFrag[tileCol], Bs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+            
+            // calculate mmul
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            {
+                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                {
+                    wmma::mma_sync(cFrag[tileRow][tileCol], aFrag[tileRow], bFrag[tileCol], cFrag[tileRow][tileCol]);
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // Store results back to C matrix
+    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
+    }
+}
+
+template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
+          const int N_WARP_ROWS_PER_BLOCK,
+          const int N_WARP_COLS_PER_BLOCK,
+          const int N_WMMA_ROWS_PER_WARP,
+          const int N_WMMA_COLS_PER_WARP,
+          const int WMMA_M,
+          const int WMMA_K,
+          const int WMMA_N>
+__global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, float *C, size_t M, size_t K, size_t N)
+{
+    using namespace nvcuda;
+
+    // allocate space for the current blocktile in shared memory
+    __shared__ half As[BM * BK];
+    __shared__ half Bs[BK * BN];
+
+    // Move blocktile to beggining of A's row and B's column
+    const int cRow = blockIdx.x;
+    const int cCol = blockIdx.y;
+    A += cRow * BM * K;
+    B += cCol * BN;
+    C += cRow * BM * N + cCol * BN;
+
+    // warpID in threadBlock
+    const int warpID = threadIdx.x / WARP_SIZE;
+    // thread LaneID in warp
+    // const int laneID = threadIdx.x % WARP_SIZE;
+    // The indices this warp has in the block tile
+    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
+    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> tmpFrag;
+
+    for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
+        for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
+            wmma::fill_fragment(cFrag[i][j], 0.0f);
+
+
+    // Loads are vectorized and each thread will load 4 elements into SMEM
+    const int elemsPerThread = 4;
+    // Calculate indices that this thread will load from GMEM to SMEM
+    // Note that for coalescing, it's important that consecutive threadIDs
+    // access consecutive memory addresses
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
+    // complete #rows that gets loaded in one loading iteration
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+
+    // Loop over all block tiles
+    for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
+    {
+        // populate SMEM cache
+        for (int offset = 0; offset + rowStrideA <= BM; offset += rowStrideA)
+        {
+            reinterpret_cast<half4 *>(&As[(innerRowA + offset) * BK + innerColA * elemsPerThread])[0] =
+                reinterpret_cast<const half4 *>(&A[(innerRowA + offset) * K + innerColA * elemsPerThread])[0];
+        }
+        for (int offset = 0; offset + rowStrideB <= BK; offset += rowStrideB)
+        {
+            reinterpret_cast<half4 *>(&Bs[(innerRowB + offset) * BN + innerColB * elemsPerThread])[0] =
+                reinterpret_cast<const half4 *>(&B[(innerRowB + offset) * N + innerColB * elemsPerThread])[0];
+        }
+
+        __syncthreads();
+
+        // advance blocktile
+        A += BK;
+        B += BK * N;
+
+        // start of data belonging to respective warp
+        int warpOffsetA = warpRow * WM * BK;
+        int warpOffsetB = warpCol * WN;
+        
+        for (int chunk = 0; chunk < CHUNK_K; chunk++)
+        {   
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+                wmma::load_matrix_sync(aFrag[tileRow], As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                wmma::load_matrix_sync(bFrag[tileCol], Bs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+            
+            // calculate mmul
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            {
+                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                {
+                    wmma::fill_fragment(tmpFrag, 0.0f);
+                    wmma::mma_sync(tmpFrag, aFrag[tileRow], bFrag[tileCol], tmpFrag);
+
+                    // accumulate outside tensor cores to avoid RZ
+                    for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+                        cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
+
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // Store results back to C matrix
+    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
+    }
+}
+
+
 template<typename InputType, typename OutputType>
 __global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
 {
@@ -531,6 +761,60 @@ template void matmulCUDACores<half, float, 1>(half*, half*, float*, size_t, size
 template void matmulCUDACores<float, float, 1>(float*, float*, float*, size_t, size_t, size_t);
 template void matmulCUDACores<float, double, 1>(float*, float*, double*, size_t, size_t, size_t);
 
+
+constexpr struct matmulScalesTensor getArgScales(int configuration) {
+    
+    if (configuration == 0)
+    {
+        return {1, 1, 1, 1, 1};
+    }
+    else if (configuration == 1)
+    {
+        return {8, 8, 2, 2, 2};
+    } 
+    else if (configuration == 2)
+    {
+        return {4, 4, 2, 2, 2};
+    }
+    // Warning: Before adding new configuration, make sure
+    // that the shared memory of the GPU is large enough to handle the block dimensions
+
+    return {-1, -1, -1, -1, -1};
+}
+
+template<int configuration, int WMMA_M, int WMMA_K, int WMMA_N>
+constexpr struct matmulTemplateArgsTensor getMatmulTemplateArgsTensor()
+{   
+    constexpr struct matmulScalesTensor scales = getArgScales(configuration);
+    constexpr int CHUNK_K = scales.scaleChunk;
+    constexpr int BM = WMMA_M * scales.scaleBM;
+    constexpr int BN = WMMA_N * scales.scaleBN;
+    constexpr int BK = WMMA_K * CHUNK_K;
+    
+    constexpr int WM = WMMA_M * scales.scaleWM;
+    constexpr int WN = WMMA_N * scales.scaleWN;
+
+    // the "warpdimensions" must divide the block dimensions
+    static_assert(BM % WM == 0);
+    static_assert(BN % WN == 0);
+    constexpr int N_WARP_ROWS_PER_BLOCK = BM / WM;
+    constexpr int N_WARP_COLS_PER_BLOCK = BN / WN;
+    constexpr int N_WMMA_ROWS_PER_WARP = WM / WMMA_M;
+    constexpr int N_WMMA_COLS_PER_WARP = WN / WMMA_N;
+    constexpr int threadsPerBlock = N_WARP_ROWS_PER_BLOCK * N_WARP_COLS_PER_BLOCK * WARP_SIZE;
+    // In each SMEM loading iteration, each thread loads 4 values from GMEM
+    // These asserts ensures that the loading loop does not create divergent branches (i.e. each thread has 
+    // the same amount of values to load)
+    static_assert((BM * BK) % (4 * threadsPerBlock) == 0);
+    static_assert((BK * BN) % (4 * threadsPerBlock) == 0);
+    // These asserts ensure that in each SMEM loading iteration, the threads load N entire rows (and not a half row or something)
+    // of the shared memory
+    static_assert((4 * threadsPerBlock) % BK == 0);
+    static_assert((4 * threadsPerBlock) % BN == 0);
+
+    return {BM, BN, BK, WM, WN, CHUNK_K, N_WARP_ROWS_PER_BLOCK, N_WARP_COLS_PER_BLOCK, N_WMMA_ROWS_PER_WARP, N_WMMA_COLS_PER_WARP, threadsPerBlock};
+}
+
 template<typename InputType, typename OutputType, int version>
 void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
@@ -539,9 +823,9 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
     const int K_STEP       = 16;
     const int WARP_SIZE_M  = 2;
     const int WARP_SIZE_N  = 2;
-    const int FRAG_SIZE_M  = std::is_same<InputType, half>::value ? 16 : 8;
-    const int FRAG_SIZE_K  = std::is_same<InputType, half>::value ? 16 : 4;
-    const int FRAG_SIZE_N  = std::is_same<InputType, half>::value ? 16 : 8;
+    constexpr int FRAG_SIZE_M  = std::is_same<InputType, half>::value ? 16 : 8;
+    constexpr int FRAG_SIZE_K  = std::is_same<InputType, half>::value ? 16 : 4;
+    constexpr int FRAG_SIZE_N  = std::is_same<InputType, half>::value ? 16 : 8;
     
     if constexpr (version == 0)
     {
@@ -586,6 +870,47 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
                     (A, B, C, M, K, N);
         }
     }
+    else if constexpr (version == 4 || version == 5)
+    {
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            if (version == 4)
+            {
+                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else 
+            {
+                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            }
+        }
+        else
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<2, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            if (version == 4)
+            {
+                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else 
+            {
+                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            }
+        }
+    }
 
     PRINT_ON_ERROR(cudaGetLastError());
 }
@@ -594,6 +919,8 @@ template void matmulTensorCores<half, float, 0>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 1>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 2>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
 
 template<typename InputType, typename OutputType, int version, bool useTensorCores>
 flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 

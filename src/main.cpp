@@ -45,12 +45,24 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_simpleMarkidis<3, 1>,
         .name = "Simple Markidis v3 stream:1",
         .description = "Simple markidis with shared memory",
-        .highestPerforming = true,
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<3, 4>,
         .name = "Simple Markidis v3 stream:4",
         .description = "Simple markidis with shared memory",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_simpleMarkidis<4, 1>,
+        .name = "Simple Markidis v4 stream:1",
+        .description = "Simple markidis with shared memory, vectorized loads",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_simpleMarkidis<5, 1>,
+        .name = "Simple Markidis v5 stream:1",
+        .description = "Simple markidis with shared memory, vectorized loads and accumulation outside tensor cores",
         .highestPerforming = true,
     },
     {
@@ -467,7 +479,6 @@ int main(int argc, char *argv[])
 
         if (strcmp(argv[1], "32") == 0)
         {
-            //std::vector<int> timeIndices32 = {0, 1, 2, 3, 5, 10};
             std::vector<int> timeIndices32;
             for(size_t i = 0; i < ARRAY_COUNT(matmulVariants32); i++) {
                 if (matmulVariants32[i].highestPerforming) {
@@ -475,13 +486,13 @@ int main(int argc, char *argv[])
                 }
             }
 
+            // timeIndices32 = {3, 4, 5, 6};
             for(const int value : timeIndices32)
             {
                 timeFunction(&matmulVariants32[value], argv[3], rng);
                 rng.state = seed;
             }
         } else if (strcmp(argv[1], "64") == 0) {
-            //std::vector<int> timeIndices64 = {};
             std::vector<int> timeIndices64;
             for(size_t i = 0; i < ARRAY_COUNT(matmulVariants64); i++) {
                 if (matmulVariants64[i].highestPerforming) {
@@ -489,6 +500,7 @@ int main(int argc, char *argv[])
                 }
             }
 
+            // timeIndices64 = {};
             for(const int value : timeIndices64)
             {
                 timeFunction(&matmulVariants64[value], argv[3], rng);
