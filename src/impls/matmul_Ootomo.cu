@@ -11,6 +11,7 @@
 #include "../profiler.h"
 #include "../timer.h"
 #include "./split_merge_cuda.h"
+#include "./matmul_cuda.h"
 
 /**
  * Note: Kernels in this file have been inspired by: 
@@ -25,31 +26,7 @@
 
 #define WARP_SIZE 32
 
-struct matmulTemplateArgs
-{
-    int BM; // The number of rows of C a threadblock computes
-    int BN; // The number of cols of C a threadblock computes
-    int BK; // The dimension of the "dotproducts" a threadblock performs in each iteration 
-    int WM; // The number of rows of C a warp computes
-    int WN; // The number of cols of C a warp computes
-    int CHUNK_K; // BK / WMMA_K
-    int N_WARP_ROWS_PER_BLOCK; // How many rows of warps a threadblock gets assigned
-    int N_WARP_COLS_PER_BLOCK; // How many cols of warps a threadblock gets assigned
-    int N_WMMA_ROWS_PER_WARP; // The amount of tensor core multiplications required to cover WM
-    int N_WMMA_COLS_PER_WARP; // The amount of tensor core multiplications required to cover WN
-    int threadsPerBlock; // The amount of threads a threadblock needs
-};
-
-struct matmulScales
-{
-    int scaleBM;
-    int scaleBN;
-    int scaleChunk;
-    int scaleWM;
-    int scaleWN;
-};
-
-constexpr struct matmulScales getArgScales(int configuration) {
+constexpr struct matmulScalesTensor getArgScales(int configuration) {
     
     if (configuration == 0)
     {
@@ -70,9 +47,9 @@ constexpr struct matmulScales getArgScales(int configuration) {
 }
 
 template<int configuration>
-constexpr struct matmulTemplateArgs getMatmulTemplateArgs()
+constexpr struct matmulTemplateArgsTensor getMatmulTemplateArgsTensor()
 {   
-    constexpr struct matmulScales scales = getArgScales(configuration);
+    constexpr struct matmulScalesTensor scales = getArgScales(configuration);
     constexpr int CHUNK_K = scales.scaleChunk;
     constexpr int BM = WMMA_M * scales.scaleBM;
     constexpr int BN = WMMA_N * scales.scaleBN;
@@ -653,7 +630,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
     {
         if (M < 256 | K < 256 | N < 256)
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<0>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
@@ -668,7 +645,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         } 
         else 
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<1>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<1>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
@@ -686,7 +663,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
     {   
         if (M < 256 | K < 256 | N < 256)
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<0>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
@@ -706,7 +683,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         }
         else
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<2>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<2>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
@@ -866,7 +843,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, s
     {
         if (M < 256 | K < 256 | N < 256)
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<0>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
@@ -881,7 +858,7 @@ void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, s
         } 
         else 
         {
-            constexpr struct matmulTemplateArgs p = getMatmulTemplateArgs<1>();
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<1>();
             assert(M % p.BM == 0);
             assert(N % p.BN == 0);
             assert(K % p.BK == 0);
