@@ -49,11 +49,11 @@ flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, size_t M, size_
     PRINT_ON_ERROR(cudaMemcpy(dev_dB16,    dB16,    K * N * sizeof(half), cudaMemcpyHostToDevice));
 
     // Multiply matrices
-    matmulCUDACores<half, float, 0>(dev_A16, dev_B16, dev_A16B16, M, K, N);
+    matmulCUDACores<half, float, float, 0>(dev_A16, dev_B16, dev_A16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    matmulCUDACores<half, float, 0>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
+    matmulCUDACores<half, float, float, 0>(dev_dA16, dev_B16, dev_dA16B16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
-    matmulCUDACores<half, float, 0>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
+    matmulCUDACores<half, float, float, 0>(dev_A16, dev_dB16, dev_A16dB16, M, K, N);
     PRINT_ON_ERROR(cudaGetLastError());
 
     // Copy from device to host

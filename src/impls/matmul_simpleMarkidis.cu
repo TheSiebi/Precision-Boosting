@@ -149,7 +149,7 @@ template flop_counts matmul_simpleMarkidis<4, 1, true>(float *A, float *B, float
 template flop_counts matmul_simpleMarkidis<5, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template flop_counts matmul_simpleMarkidis<5, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
-template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
+template<int splitCount, int mergeCount, typename mulInputType, typename mulType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N,
                                         std::pair<int, int> mergePattern[mergeCount], double scale) 
 {
@@ -203,7 +203,7 @@ flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t
         if constexpr(useTensorCores)
             matmulTensorCores<mulInputType, mulOutputType, 2>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         else 
-            matmulCUDACores<mulInputType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+            matmulCUDACores<mulInputType, mulType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
         
         double factor = std::pow(scale, mergePattern[i].first) * std::pow(scale, mergePattern[i].second);
         if (factor > 1.0)
@@ -249,7 +249,7 @@ template<>
 flop_counts matmul_simpleMarkidis_double<0>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_simpleMarkidis_double<3, 9, half, float, true>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_simpleMarkidis_double<3, 9, half, float, float, true>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
@@ -258,22 +258,68 @@ flop_counts matmul_simpleMarkidis_double<1>(double *A, double *B, double *C, siz
     std::pair<int, int> merges[16];
     for(int i = 0; i < 16; i++)
         merges[i] = {i/4, i%4};
-    return matmul_simpleMarkidis_double<4, 16, half, float, true>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_simpleMarkidis_double<4, 16, half, float, float, true>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<2>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
-    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
-    return matmul_simpleMarkidis_double<2, 4, float, float, false>(A, B, C, M, K, N, merges, 1.0);
+    std::pair<int, int> merges[16];
+    for(int i = 0; i < 16; i++)
+        merges[i] = {i/4, i%4};
+    return matmul_simpleMarkidis_double<4, 16, half, float, double, false>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<3>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
-    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
-    return matmul_simpleMarkidis_double<2, 4, float, double, false>(A, B, C, M, K, N, merges, 1 << 24);
+    std::pair<int, int> merges[16];
+    for(int i = 0; i < 16; i++)
+        merges[i] = {i/4, i%4};
+    return matmul_simpleMarkidis_double<4, 16, half, float, double, false>(A, B, C, M, K, N, merges, 1 << 11);
 }
+
+template<>
+flop_counts matmul_simpleMarkidis_double<4>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    std::pair<int, int> merges[25];
+    for(int i = 0; i < 25; i++)
+        merges[i] = {i/5, i%5};
+    return matmul_simpleMarkidis_double<5, 25, half, float, double, false>(A, B, C, M, K, N, merges, 1 << 11);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<5>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, float, float, false>(A, B, C, M, K, N, merges, 1.0);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<6>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, float, double, false>(A, B, C, M, K, N, merges, 1.0);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<7>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, float, double, false>(A, B, C, M, K, N, merges, 1 << 24);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<8>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    std::pair<int, int> merges[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    return matmul_simpleMarkidis_double<2, 4, float, double, double, false>(A, B, C, M, K, N, merges, 1.0);
+}
+
+
+
+
+
 
 #if SM_VERSION >= 800
 template<int splitCount, int mergeCount>
