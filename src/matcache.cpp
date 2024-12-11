@@ -10,17 +10,17 @@
 
 
 // Generate a filename based on matmul dimensions, generation schema, precision and operand (A, B, or C)
-std::string generateFilename(size_t M, size_t K, size_t N, char operand, const std::string& schema, const std::string& precision) {
+std::string generateFilename(size_t M, size_t K, size_t N, char operand, const std::string& schema, const std::string& precision, int index) {
     std::ostringstream oss;
-    oss << "matcache/matrix_" << operand << "_" << M << "x" << K << "x" << N << "_" << precision << "_" << schema << ".bin";
+    oss << "matcache/matrix_" << operand << "_" << M << "x" << K << "x" << N << "_" << precision << "_" << schema << "_" << index << ".bin";
     return oss.str();
 }
 
 // Store a matrix in a binary file
 template<class T>
-int storeMatrix(T* matrix, size_t M, size_t K, size_t N, char operand, const std::string& schema) {
+int storeMatrix(T* matrix, size_t M, size_t K, size_t N, char operand, const std::string& schema, int index) {
     std::string precision = std::is_same<T, float>::value ? "float" : "double";
-    std::string filename = generateFilename(M, K, N, operand, schema, precision);
+    std::string filename = generateFilename(M, K, N, operand, schema, precision, index);
     FILE* file = fopen(filename.c_str(), "wb");
     if (!file) {
         perror("MatCache: Failed to open file for writing");
@@ -64,7 +64,7 @@ const std::string typeToSchema(int input_type) {
 
 // Loads matrices if they exist, else computes and stores them
 template<class T>
-std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type, struct LCG *rng) {
+std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type, int index, struct LCG *rng) {
     const std::string schema = typeToSchema(input_type);
     if (schema == "unknown") {
         perror("MatCache: Unknown input type!");
@@ -72,9 +72,9 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     }
 
     std::string precision = std::is_same<T, float>::value ? "float" : "double";
-    std::string filenameA = generateFilename(M, K, N, 'A', schema, precision);
-    std::string filenameB = generateFilename(M, K, N, 'B', schema, precision);
-    std::string filenameC = generateFilename(M, K, N, 'C', schema, precision);
+    std::string filenameA = generateFilename(M, K, N, 'A', schema, precision, index);
+    std::string filenameB = generateFilename(M, K, N, 'B', schema, precision, index);
+    std::string filenameC = generateFilename(M, K, N, 'C', schema, precision, index);
 
     bool existsA = fileExists(filenameA);
     bool existsB = fileExists(filenameB);
@@ -134,13 +134,13 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     referenceMatmul_full<T>(A, B, C, M, K, N);
 
     // Store the matrices
-    storeMatrix(A, M, K, N, 'A', schema);
-    storeMatrix(B, M, K, N, 'B', schema);
-    storeMatrix(C, M, K, N, 'C', schema);
+    storeMatrix(A, M, K, N, 'A', schema, index);
+    storeMatrix(B, M, K, N, 'B', schema, index);
+    storeMatrix(C, M, K, N, 'C', schema, index);
 
-    return getMatrices<T>(M, K, N, input_type, rng);
+    return getMatrices<T>(M, K, N, input_type, index, rng);
 }
 
 
-template std::tuple<float*, float*, float*> getMatrices<float>(size_t, size_t, size_t, int, struct LCG*);
-template std::tuple<double*, double*, double*> getMatrices<double>(size_t, size_t, size_t, int, struct LCG*);
+template std::tuple<float*, float*, float*> getMatrices<float>(size_t, size_t, size_t, int, int, struct LCG*);
+template std::tuple<double*, double*, double*> getMatrices<double>(size_t, size_t, size_t, int, int, struct LCG*);

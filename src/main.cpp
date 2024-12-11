@@ -319,7 +319,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
 
         for (size_t input_type = 0; input_type < NUM_TYPES; input_type++) {
-            auto [A, B, C_reference] = getMatrices<T>(M, K, N, input_type, rng);
+            auto [A, B, C_reference] = getMatrices<T>(M, K, N, input_type, 0, rng);
 
             // Call function under test
             function->function(A, B, C, M, K, N);
