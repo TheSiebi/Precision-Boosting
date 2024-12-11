@@ -463,7 +463,7 @@ __global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, OutputType
 }
 
 
-template<typename InputType, typename OutputType>
+template<typename InputType, typename MulType, typename OutputType>
 __global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
 {
     int m = blockIdx.x * blockDim.x + threadIdx.x;
@@ -471,7 +471,7 @@ __global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C,
     OutputType result = 0.0;
     for (int k = 0; k < K; k++) 
     {
-        result += (OutputType)A[m*K + k] * (OutputType)B[k*N + n];
+        result += (OutputType)((MulType)A[m*K + k] * (MulType)B[k*N + n]);
     }
     C[m*N + n] = result;
 }
@@ -507,8 +507,8 @@ __device__ void loadFromGmem(int N, int K, const T *A, const T *B,
 template <const int BM, const int BN, const int BK, const int WM, const int WN, 
     const int WMITER, const int WNITER, const int WSUBM, const int WSUBN, 
     const int TM, const int TN,
-    typename InputType, typename OutputType>
-__device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threadResults, const InputType *As,
+    typename InputType, typename MulType, typename OutputType>
+__device__ void warpMatmul(MulType *regM, MulType *regN, OutputType *threadResults, const InputType *As,
     const InputType *Bs, const int warpRow, const int warpCol, const int threadRowInWarp, const int threadColInWarp)
 {
     // Compute results of warp in an outer product instead of an inner product for better cache reuse
@@ -520,7 +520,7 @@ __device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threa
             for (int i = 0; i < TM; i++)
             {
                 regM[wSubRowIdx * TM + i] = 
-                    (OutputType) As[dotIdx * BM + warpRow * WM + wSubRowIdx * WSUBM + threadRowInWarp * TM + i];
+                    (MulType) As[dotIdx * BM + warpRow * WM + wSubRowIdx * WSUBM + threadRowInWarp * TM + i];
             }
         }
 
@@ -529,7 +529,7 @@ __device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threa
             for (int i = 0; i < TN; i++)
             {
                 regN[wSubColIdx * TN + i] = 
-                    (OutputType) Bs[dotIdx * BN + warpCol * WN + wSubColIdx * WSUBN + threadColInWarp * TN + i];
+                    (MulType) Bs[dotIdx * BN + warpCol * WN + wSubColIdx * WSUBN + threadColInWarp * TN + i];
             }
         }
 
@@ -543,7 +543,7 @@ __device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threa
                     for (int resIdxN = 0; resIdxN < TN; resIdxN++)
                     {
                         threadResults[(wSubRowIdx * TM + resIdxM) * (WNITER * TN) + 
-                            wSubColIdx * TN + resIdxN] += regM[wSubRowIdx * TM + resIdxM] * regN[wSubColIdx * TN + resIdxN];
+                            wSubColIdx * TN + resIdxN] += (OutputType) (regM[wSubRowIdx * TM + resIdxM] * regN[wSubColIdx * TN + resIdxN]);
                     }
                 }
             }
@@ -566,7 +566,7 @@ __device__ void warpMatmul(OutputType *regM, OutputType *regN, OutputType *threa
  */
 template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int WMITER, const int WNITER, const int TM, const int TN,
-          typename InputType, typename OutputType>
+          typename InputType, typename MulType, typename OutputType>
 __global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     const int cRow = blockIdx.x;
@@ -613,8 +613,8 @@ __global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, Ou
     // thread-local cache for results in registerfile
     OutputType threadResults[WMITER * TM * WNITER * TN] = {0.0};
     // thread-local cache for A and B
-    OutputType regM[WMITER * TM] = {0.0};
-    OutputType regN[WNITER * TN] = {0.0};
+    MulType regM[WMITER * TM] = {0.0};
+    MulType regN[WNITER * TN] = {0.0};
 
     // Loop over all block tiles
     for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
@@ -625,7 +625,7 @@ __global__ void matmul_kernel_CUDA_v1(const InputType *A, const InputType *B, Ou
 
         __syncthreads();
 
-        warpMatmul<BM, BN, BK, WM, WN, WMITER, WNITER, WSUBM, WSUBN, TM, TN, InputType, OutputType>
+        warpMatmul<BM, BN, BK, WM, WN, WMITER, WNITER, WSUBM, WSUBN, TM, TN, InputType, MulType, OutputType>
             (regM, regN, threadResults, As, Bs, warpRow, warpCol, threadRowInWarp, threadColInWarp);
 
         // advance blocktile
@@ -721,14 +721,14 @@ constexpr struct matmulTemplateArgsCUDA getMatmulTemplateArgsCUDA()
     return {BM, BN, BK, WM, WN, TM, TN, WMITER, WNITER, threadsPerBlock};
 }
 
-template<typename InputType, typename OutputType, int version>
+template<typename InputType, typename MulType, typename OutputType, int version>
 void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     if constexpr (version == 0)
     {
         dim3 threadsPerBlock(16, 16);
         dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
-        matmul_kernel_CUDA_v0<InputType, OutputType>
+        matmul_kernel_CUDA_v0<InputType, MulType, OutputType>
                         <<<blocks, threadsPerBlock>>>(A, B, C, M, K, N);
     }
     else if constexpr (version == 1)
@@ -741,7 +741,7 @@ void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, OutputType>
+            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, MulType, OutputType>
                 <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
         } 
         else 
@@ -752,16 +752,19 @@ void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t
             assert(K % p.BK == 0);
 
             dim3 blocks(M / p.BM, N / p.BN);
-            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, OutputType>
+            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, MulType, OutputType>
                 <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
         }
     }
 }
 
-template void matmulCUDACores<half, float, 0>(half*, half*, float*, size_t, size_t, size_t);
-template void matmulCUDACores<half, float, 1>(half*, half*, float*, size_t, size_t, size_t);
-template void matmulCUDACores<float, float, 1>(float*, float*, float*, size_t, size_t, size_t);
-template void matmulCUDACores<float, double, 1>(float*, float*, double*, size_t, size_t, size_t);
+template void matmulCUDACores<half, float, float, 0>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<half, float, float, 1>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<half, float, double, 1>(half*, half*, double*, size_t, size_t, size_t);
+template void matmulCUDACores<half, double, double, 1>(half*, half*, double*, size_t, size_t, size_t);
+template void matmulCUDACores<float, float, float, 1>(float*, float*, float*, size_t, size_t, size_t);
+template void matmulCUDACores<float, float, double, 1>(float*, float*, double*, size_t, size_t, size_t);
+template void matmulCUDACores<float, double, double, 1>(float*, float*, double*, size_t, size_t, size_t);
 
 
 constexpr struct matmulScalesTensor getArgScales(int configuration) {
@@ -956,7 +959,7 @@ flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, siz
     if constexpr(useTensorCores)
         matmulTensorCores<InputType, OutputType, version>(deviceA, deviceB, deviceC, M, K, N);
     else
-        matmulCUDACores<InputType, OutputType, version>(deviceA, deviceB, deviceC, M, K, N);
+        matmulCUDACores<InputType, OutputType, OutputType, version>(deviceA, deviceB, deviceC, M, K, N);
 
     PRINT_ON_ERROR(cudaGetLastError());
 
