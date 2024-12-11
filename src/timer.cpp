@@ -180,7 +180,7 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
 
         // Fill matrices A and B according to input type
         //fill_matrices<T>(&rng, input_type, A, B, M*K, K*N);
-        auto [A, B, C_ref] = getMatrices<T>(M, K, N, input_type, &rng);
+        auto [A, B, C_ref] = getMatrices<T>(M, K, N, input_type, i, &rng);
 
         // Run matmul implementation
         func(A, B, C, M, K, N);        
