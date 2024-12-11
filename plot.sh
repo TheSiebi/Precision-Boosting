@@ -30,8 +30,6 @@ if [ -z "$1" ]; then
     python3 scripts/plotting.py --input_folder $folder64
     python3 scripts/plotting.py --input_folder $folder32 --compare
     python3 scripts/plotting.py --input_folder $folder64 --compare
-    # python3 scripts/plotting.py --input_folder $folder32 --speedup
-    # python3 scripts/plotting.py --input_folder $folder64 --speedup
     python3 scripts/plotting.py --input_folder $folder32 --precision
     python3 scripts/plotting.py --input_folder $folder64 --precision
 else
@@ -41,13 +39,13 @@ else
         mkdir -p $folder16
         ./build/main 16 -p $folder16
         python3 scripts/plotting.py --input_folder $folder16
+        python3 scripts/plotting.py --input_folder $folder16 --compare
     elif [ "$1" -eq 32 ]; then
         echo "Generating FP32 plots"
         mkdir -p $folder32
         ./build/main 32 -p $folder32
         python3 scripts/plotting.py --input_folder $folder32
         python3 scripts/plotting.py --input_folder $folder32 --compare
-        # python3 scripts/plotting.py --input_folder $folder32 --speedup
         python3 scripts/plotting.py --input_folder $folder32 --precision
     elif [ "$1" -eq 64 ]; then
         echo "Generating FP64 plots"
@@ -55,7 +53,6 @@ else
         ./build/main 64 -p $folder64
         python3 scripts/plotting.py --input_folder $folder64
         python3 scripts/plotting.py --input_folder $folder64 --compare
-        # python3 scripts/plotting.py --input_folder $folder64 --speedup
         python3 scripts/plotting.py --input_folder $folder64 --precision
     else
         echo "Invalid argument. Please provide 16, 32 or 64."

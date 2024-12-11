@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdint.h>
 #include <time.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
 
 float bits_to_float(uint32_t bits);
 uint32_t float_to_bits(float f);
@@ -62,6 +64,8 @@ double next_double_with_exp(struct LCG *rng, int exponent);
 int next_exponent_geometric(struct LCG *rng, int min_exp, int max_exp);
 int next_int_geometric(struct LCG *rng);
 
+/// Fill array with halfs distributed uniformly between -1 and 1
+void gen_halves_urand(struct LCG *rng, half *hs, int size);
 /// Fill array with floats distributed uniformly between -1 and 1
 void gen_floats_urand(struct LCG *rng, float *fs, int size);
 /// Fill array with doubles distributed uniformly between -1 and 1
@@ -80,6 +84,8 @@ void gen_urand(struct LCG *rng, T *ts, int size)
         return gen_floats_urand(rng, (float*) ts, size);
     } else if (std::is_same<T, double>::value) {
         return gen_doubles_urand(rng, (double*) ts, size);
+    } else if (std::is_same<T, half>::value) {
+        return gen_halves_urand(rng, (half*) ts, size);
     } else {
         assert(false);
     }

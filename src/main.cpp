@@ -21,12 +21,24 @@
 
 const int FUNCTION_NAME_WIDTH = 40;
 
-matmul_variant<half> matmulVariants16[] =
+matmul_variant<half> exponentiationVariants16[] =
 {
     {
         .function = matmul_exponentiation,
-        .name = "Matrix Exponentiation",
+        .name = "Our Exponentiation",
         .description = "Exponentiation using tensor cores",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_exponentiation_v2,
+        .name = "Our Exponentiation v2",
+        .description = "Exponentiation using tensor cores",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_exponentiation_cuBLAS,
+        .name = "cuBLAS Exponentiation",
+        .description = "Exponentiation with cuBLAS using tensor cores",
         .highestPerforming = true,
     }
 };
@@ -533,15 +545,15 @@ int main(int argc, char *argv[])
         if (strcmp(argv[1], "16") == 0) {
             // Benchmark half matrix multiplication through matrix exponentiation
             std::vector<int> timeIndices16;
-            for(size_t i = 0; i < ARRAY_COUNT(matmulVariants16); i++) {
-                if (matmulVariants16[i].highestPerforming) {
+            for(size_t i = 0; i < ARRAY_COUNT(exponentiationVariants16); i++) {
+                if (exponentiationVariants16[i].highestPerforming) {
                     timeIndices16.push_back(i);
                 }
             }
 
             for(const int value : timeIndices16)
             {
-                timeExponentiation(&matmulVariants16[value], argv[3], rng);
+                timeExponentiation(&exponentiationVariants16[value], argv[3], rng);
                 rng.state = seed;
             }
         } else if (strcmp(argv[1], "32") == 0)

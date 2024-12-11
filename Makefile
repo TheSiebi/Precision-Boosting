@@ -44,10 +44,10 @@ build/timer.o: src/timer.cpp
 	nvcc $(CUDA_FLAGS) -c src/timer.cpp -o $@
 
 build/rand.o: src/rand.cpp
-	$(CPP) $(OPT_FLAGS) -c src/rand.cpp -o $@
+	nvcc $(CUDA_FLAGS) -c src/rand.cpp -o $@
 
 build/precision.o: src/precision.cpp
-	$(CPP) $(OPT_FLAGS) -c src/precision.cpp -o $@
+	nvcc $(CUDA_FLAGS) -c src/precision.cpp -o $@
 
 build/cJSON.o: lib/cjson/cJSON.c
 	$(CC) $(BASE_FLAGS) -O3 -c lib/cjson/cJSON.c -o $@

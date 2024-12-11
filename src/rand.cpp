@@ -205,6 +205,12 @@ int next_int_geometric(struct LCG *rng) {
     return result;
 }
 
+void gen_halves_urand(struct LCG *rng, half *hs, int size) {
+    for (int i = 0; i < size; i++) {
+        hs[i] = __float2half(next_signed_float(rng));
+    }
+}
+
 void gen_floats_urand(struct LCG *rng, float *fs, int size) {
     for (int i = 0; i < size; i++) {
         fs[i] = next_signed_float(rng);

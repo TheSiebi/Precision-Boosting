@@ -336,7 +336,7 @@ void timeExponentiation(matmul_variant<half> *function, char *path, LCG rng) {
             .flops16 = counts.flops16,
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
-            .math_flops = 2L*n*n*n*matmul_exponent,
+            .math_flops = 2L*n*n*n*(matmul_exponent - 1),
             .timings = &timings[i * maxIterationsPerConfig],
         };
         runs[i] = run;

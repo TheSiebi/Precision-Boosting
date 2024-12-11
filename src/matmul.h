@@ -22,6 +22,9 @@ template<int version, int streamCount, bool useScale>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t K, size_t N); 
 flop_counts matmul_markidis(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
+template<typename InputType, typename OutputType, int version>
+void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N);
+
 template<int version>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
@@ -40,6 +43,8 @@ flop_counts matmul_cuBLAS64(double *A, double *B, double *C, size_t M, size_t K,
 
 const int matmul_exponent = 50;
 flop_counts matmul_exponentiation(half *A, half *B, half *C, size_t M, size_t K, size_t N);
+flop_counts matmul_exponentiation_v2(half *h_A, half *h_B, half *h_C, size_t M, size_t K, size_t N);
+flop_counts matmul_exponentiation_cuBLAS(half *h_A, half *h_B, half *h_C, size_t M, size_t K, size_t N);
 
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t max_splits, const bool verbose);
