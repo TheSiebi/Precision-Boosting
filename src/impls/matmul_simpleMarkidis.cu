@@ -15,7 +15,7 @@
 
 #include "matmul_cuda.h"
 
-template<int version, int streamCount>
+template<int version, int streamCount, bool useScale>
 flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t K, size_t N) 
 {
     assert((M % 16) == 0);
@@ -28,7 +28,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < streamCount; i++)
         PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
 
-
+    constexpr float scale = useScale ? (float) (1 << 11) : 1.0f;
     size_t ASize = M * K * sizeof(half);
     size_t BSize = K * N * sizeof(half);
     size_t CSize = M * N * sizeof(float);
@@ -72,10 +72,10 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
         );
         split_2<float, half>
                <<<DivRoundUp(copyCountA, 256), 256, 0, streams[i]>>>
-               (deviceAFull + offsetA, deviceA[0] + offsetA, deviceA[1] + offsetA, 1.0f);
+               (deviceAFull + offsetA, deviceA[0] + offsetA, deviceA[1] + offsetA, scale);
         split_2<float, half>
                <<<DivRoundUp(copyCountB, 256), 256, 0, streams[i]>>>
-               (deviceBFull + offsetB, deviceB[0] + offsetB, deviceB[1] + offsetB, 1.0f);
+               (deviceBFull + offsetB, deviceB[0] + offsetB, deviceB[1] + offsetB, scale);
     }
 
     PRINT_ON_ERROR(cudaGetLastError());
@@ -90,7 +90,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
 
     PROFILE_SEGMENTS_SWITCH("merge");
     merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
-              (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], 1.0f);
+              (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], scale);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();
 
@@ -139,13 +139,15 @@ void divide_cuda(Type *C, int N, double scale)
         C[i] /= scale;
 }
 
-template flop_counts matmul_simpleMarkidis<0, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<1, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<2, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<3, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<3, 4>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<4, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
-template flop_counts matmul_simpleMarkidis<5, 1>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<0, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<1, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<2, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<3, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<3, 4, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<4, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<4, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<5, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<5, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 
 template<int splitCount, int mergeCount, typename mulInputType, typename mulOutputType, bool useTensorCores>
 flop_counts matmul_simpleMarkidis_double(double *A, double *B, double *C, size_t M, size_t K, size_t N,
