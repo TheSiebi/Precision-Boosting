@@ -238,8 +238,9 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WMMA_COLS_PER_WARP,
           const int WMMA_M,
           const int WMMA_K,
-          const int WMMA_N>
-__global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, float *C, size_t M, size_t K, size_t N)
+          const int WMMA_N,
+          typename OutputType>
+__global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -264,7 +265,7 @@ __global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, float *C, 
 
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
@@ -331,7 +332,7 @@ __global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, float *C, 
     }
 
     // Store results back to C matrix
-    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    OutputType *warpC = &C[warpRow * WM * N + warpCol * WN];
     for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
     {
         for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
@@ -349,8 +350,9 @@ template <const int BM, const int BN, const int BK, const int WM, const int WN, 
           const int N_WMMA_COLS_PER_WARP,
           const int WMMA_M,
           const int WMMA_K,
-          const int WMMA_N>
-__global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, float *C, size_t M, size_t K, size_t N)
+          const int WMMA_N,
+          typename OutputType>
+__global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     using namespace nvcuda;
 
@@ -375,8 +377,8 @@ __global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, float *C, 
 
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> tmpFrag;
+    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> tmpFrag;
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
@@ -449,7 +451,7 @@ __global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, float *C, 
     }
 
     // Store results back to C matrix
-    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    OutputType *warpC = &C[warpRow * WM * N + warpCol * WN];
     for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
     {
         for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
@@ -882,12 +884,12 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
             dim3 blocks(M / p.BM, N / p.BN);
             if (version == 4)
             {
-                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             } 
             else 
             {
-                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             }
         }
@@ -901,12 +903,12 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
             dim3 blocks(M / p.BM, N / p.BN);
             if (version == 4)
             {
-                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             } 
             else 
             {
-                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+                matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             }
         }
@@ -920,6 +922,7 @@ template void matmulTensorCores<half, float, 1>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 2>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, half, 4>(half*, half*, half*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
 
 template<typename InputType, typename OutputType, int version, bool useTensorCores>
