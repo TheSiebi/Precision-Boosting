@@ -23,7 +23,7 @@ flop_counts matmul_exponentiation(half *h_A, half *h_B, half *h_C, size_t M, siz
     // Perform matrix exponentiation
     PROFILE_SEGMENTS_SWITCH("exponentiation");
     for (int i = 0; i < matmul_exponent; i++) {
-        matmul_cuda<half, half, 3, true>(d_A, d_B, d_B, M, K, N);
+        matmul_cuda<half, half, 5, true>(d_A, d_B, d_B, M, K, N);
     }
 
     CUDA_DEVICE_SYNCHRONIZE();

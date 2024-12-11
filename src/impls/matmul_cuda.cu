@@ -921,6 +921,7 @@ template void matmulTensorCores<half, float, 2>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, half, 5>(half*, half*, half*, size_t, size_t, size_t);
 
 template<typename InputType, typename OutputType, int version, bool useTensorCores>
 flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
