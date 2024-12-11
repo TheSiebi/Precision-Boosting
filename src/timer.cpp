@@ -189,13 +189,14 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
         //referenceMatmul_full(A, B, C_ref, M, K, N);
         double residual = rel_residual(C, C_ref, M * N);
         residuals[i] = residual;
+        
+        PRINT_ON_ERROR(cudaFreeHost(A));
+        PRINT_ON_ERROR(cudaFreeHost(B));
+        PRINT_ON_ERROR(cudaFreeHost(C_ref));
     }
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
-    PRINT_ON_ERROR(cudaFreeHost(A));
-    PRINT_ON_ERROR(cudaFreeHost(B));
     PRINT_ON_ERROR(cudaFreeHost(C));
-    PRINT_ON_ERROR(cudaFreeHost(C_ref));
 }
 
 
