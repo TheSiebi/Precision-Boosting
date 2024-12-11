@@ -212,7 +212,7 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_cuda<double, double, 2, true>,
         .name = "matmul_tensor v2",
         .description = "with shared memory",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_cuda<double, double, 3, true>,
