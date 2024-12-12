@@ -4,7 +4,7 @@ SM_BASE_VERSION=$(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader
 SM_VERSION=$(shell echo "$(SM_BASE_VERSION) * 1000 / 10" | bc)
 
 USER_FLAGS=
-BASE_FLAGS=$(USER_FLAGS) -Wall -Wextra -Wpedantic -g -ffp-contract=off -DSM_VERSION=$(SM_VERSION)
+BASE_FLAGS=$(USER_FLAGS) -Wall -Wextra -Wpedantic -g -DSM_VERSION=$(SM_VERSION)
 CPP_FLAGS=$(BASE_FLAGS) -std=gnu++2a -Wno-missing-field-initializers
 OPT_FLAGS=$(CPP_FLAGS) -O3
 DEBUG_FLAGS=$(CPP_FLAGS) -O0 -fsanitize=address
