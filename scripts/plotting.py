@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import rcParams
 from matplotlib.ticker import ScalarFormatter
 from typing import List, Tuple
-from scipy import stats
+#from scipy import stats
 #import statsmodels.api as sm
 
 
