@@ -576,7 +576,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            // timeIndices32 = {3, 4, 5, 6};
+            timeIndices32 = {18, 19, 20};
             for(const int value : timeIndices32)
             {
                 timeFunction(&matmulVariants32[value], argv[3], rng);
@@ -590,7 +590,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            // timeIndices64 = {};
+            timeIndices64 = {6, 7, 8};
             for(const int value : timeIndices64)
             {
                 timeFunction(&matmulVariants64[value], argv[3], rng);
