@@ -324,7 +324,7 @@ template<>
 flop_counts matmul_simpleMarkidis_double<0>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<3, 9, double, half, float, float, true, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<3, 9, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1<<11);
 }
 
 template<>
@@ -336,7 +336,7 @@ flop_counts matmul_simpleMarkidis_double<1>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, float, true, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1<<11);
 }
 
 template<>
