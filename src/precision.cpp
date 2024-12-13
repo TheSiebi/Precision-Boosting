@@ -46,7 +46,7 @@ template double rel_residual<double>(double *result, double *reference, int n);
 template<class T>
 int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, size_t K, size_t N) {
     // Test the square root of the matrix size
-    size_t num_to_test = 1e6 + sqrt(M * N - 1e6);
+    size_t num_to_test = std::max((size_t) 100, (size_t) sqrt(M * N));
     while (num_to_test--) {
         // Generate random index and test
         size_t index = next_below(rng, (uint32_t) (M * N));

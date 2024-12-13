@@ -56,6 +56,8 @@ cJSON* run_to_json(struct run *r, int iterations, int numInputTypes, int precisi
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterations);
     cJSON_AddItemToObject(json, "timings", timings_array);
 
+    cJSON_AddBoolToObject(json, "sanity_check", r->sanity_check);
+
     if (precisionIterationsPerInputType > 0) {
         cJSON *precMs_array = cJSON_CreateArray();
         for (int i = 0; i < numInputTypes; i++) {
@@ -115,7 +117,7 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
+bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
 {
     // A * B = C
     // A is m*k (m rows, k columns)
@@ -125,14 +127,12 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
     PRINT_ON_ERROR(cudaMallocHost(&A, M * K * sizeof(T)));
     PRINT_ON_ERROR(cudaMallocHost(&B, K * N * sizeof(T)));
     PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
-    gen_urand<T>(&rng, A, M * K);
-    gen_urand<T>(&rng, B, K * N);
-    flop_counts counts;
+    fill_matrices<T>(&rng, input_type, A, B, M * K, K * N);
 
     for(int i = 0; i < warmupIterations; i++) {
         printf("\r\tWarmup Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", i + 1, warmupIterations, M, K, N);
         fflush(stdout);
-        counts = func(A, B, C, M, K, N);
+        *counts = func(A, B, C, M, K, N);
     }
 
     printf("\r%*s\r", 100, ""); // clear warmup progress line
@@ -143,7 +143,7 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
         fflush(stdout);
         struct timespec start, end, delta;
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        counts = func(A, B, C, M, K, N);
+        func(A, B, C, M, K, N);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         sub_timespec(start, end, &delta);
         timings[i] = (double) delta.tv_sec*NS_PER_SECOND + delta.tv_nsec;
@@ -151,15 +151,21 @@ flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
 
+    bool sanityCheck = true;
+    if (-1 != test_matmul_correctness_probabilistic(&rng, A, B, C, M, K, N)) {
+        printf("Warning: Sanity check failed!\n");
+        sanityCheck = false;
+    }
+
     PRINT_ON_ERROR(cudaFreeHost(A));
     PRINT_ON_ERROR(cudaFreeHost(B));
     PRINT_ON_ERROR(cudaFreeHost(C));
 
-    return counts;
+    return sanityCheck;
 }
 
-template flop_counts timeRun<float>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
-template flop_counts timeRun<double>(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
+template bool timeRun<float>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
+template bool timeRun<double>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
 
 template<class T>
 void measurePrecision(int input_type, double *residuals, int iterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
@@ -208,9 +214,10 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 14;
+    int powerOfMaxSize = 10;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
+    const int perfTestInputType = 1;
     const int numInputTypes = 5;
     const int maxIterationsPerConfig = 50;
     const int maxIterationsPerInputType = maxIterationsPerConfig / numInputTypes;
@@ -250,7 +257,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             precisionIterationsPerInputType[i] = 5;
         }
 
-        flop_counts counts = timeRun<T>(&timings[i * maxIterationsPerConfig], iterationsPerConfig[i], warmupIterations, n, n, n, function->function, rng);
+        flop_counts counts;
+        bool sanityCheck = timeRun<T>(&timings[i * maxIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
         
         int m_idx = i * numInputTypes;
         for (int input_type = 0; input_type < numInputTypes; input_type++) {
@@ -272,6 +280,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
             .timings = &timings[i * maxIterationsPerConfig],
+            .sanity_check = sanityCheck,
             .precMs = &ms[m_idx],
         };
         runs[i] = run;

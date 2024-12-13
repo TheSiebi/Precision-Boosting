@@ -65,6 +65,7 @@ struct run
     // Theoretical, mathematical number of flops
     size_t math_flops;
     double *timings;
+    bool sanity_check;
     struct precisionMeasurement *precMs;
 };
 
@@ -81,7 +82,7 @@ struct precisionMeasurement
 };
 
 template<class T>
-flop_counts timeRun(double *timings, int iterations, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng);
+bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng);
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);
