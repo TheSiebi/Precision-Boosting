@@ -14,7 +14,7 @@
 
 #include <cuda_fp16.h>
 
-#define MAX_SPLITS 10
+#define MAX_SPLITS 5
 
 size_t ix(size_t row, size_t col, size_t rows, size_t cols)
 {
@@ -230,6 +230,7 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
 
     if constexpr (version == 0 || version == 1)
     {
+        PROFILE_FUNCTION_SEGMENT_START("split");
         // D = Split_Mat(A, inf, delta); nA = length(D);
         auto D = ozaki_split_to_float(m, n, a, MAX_SPLITS);
         const auto nA = D.size();
@@ -241,6 +242,7 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
         auto E = ozaki_split_to_float(n, p, b, MAX_SPLITS);
         const auto nB = E.size();
         *nB_ptr = (int) nB;
+        PROFILE_SEGMENT_FUNCTION_END();
 
         // for r = 1 : nB, E{r} = E{r}T ; end
         // again, why transpose?
@@ -306,10 +308,12 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
     const auto unevaluated_sum = ozaki_mul<version>(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
     // std::cout << "nA: " << nA << "/" << MAX_SPLITS << ", ";
     // std::cout << "nB: " << nB << "/" << MAX_SPLITS << "\n";
+    PROFILE_FUNCTION_SEGMENT_START("accumulate");
     memset(c, 0, m * p * sizeof(double));
-    for (size_t ij = 0; ij < m * p; ++ij)
-        for (const auto& matrix: unevaluated_sum)
+    for (const auto& matrix: unevaluated_sum)
+        for (size_t ij = 0; ij < m * p; ++ij)
             c[ij] += matrix[ij];
+    PROFILE_SEGMENT_FUNCTION_END();
 
     PROFILE_FUNCTION_END();
 
