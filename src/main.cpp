@@ -234,24 +234,42 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_simpleMarkidis_double<6>,
         .name = "Simple Markidis double v6",
-        .description = "Split 2 float, 4 float multiply & accumulate (CUDA CORES)",
+        .description = "Split 4 half, 16 float multiply & 13 float accumulate & 3 most significant terms double accumulate (CUDA & TENSOR CORES)",
         .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<7>,
         .name = "Simple Markidis double v7",
-        .description = "Split 2 float, 4 float multiply & double accumulate (CUDA CORES)",
+        .description = "Split 4 half, 16 float multiply & 10 float accumulate & 6 most significant terms double accumulate (CUDA & TENSOR CORES)",
         .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<8>,
         .name = "Simple Markidis double v8",
-        .description = "Split 2 float with scaling, 4 float multiply & double accumulate (CUDA CORES)",
+        .description = "Split 5 half, 25 float multiply & 19 float accumulate & 6 most significant terms double accumulate (CUDA & TENSOR CORES)",
         .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<9>,
         .name = "Simple Markidis double v9",
+        .description = "Split 2 float, 4 float multiply & accumulate (CUDA CORES)",
+        .highestPerforming = false,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<10>,
+        .name = "Simple Markidis double v10",
+        .description = "Split 2 float, 4 float multiply & double accumulate (CUDA CORES)",
+        .highestPerforming = false,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<11>,
+        .name = "Simple Markidis double v11",
+        .description = "Split 2 float with scaling, 4 float multiply & double accumulate (CUDA CORES)",
+        .highestPerforming = false,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<12>,
+        .name = "Simple Markidis double v12",
         .description = "Split 2 float, 4 double multiply & accumulate (CUDA CORES)",
         .highestPerforming = false,      
     },
@@ -546,10 +564,12 @@ int main(int argc, char *argv[])
         profile(matmulVariants64[5], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[4], 0, 1, 4096, 4096, 4096);
         */
-
+        // profile(matmulVariants64[7], 0, 1, 4096, 4096, 4096);
+        // profile(matmulVariants64[14], 0, 1, 4096, 4096, 4096);
+        // profile(matmulVariants64[15], 0, 1, 4096, 4096, 4096);
         
-        profile(matmulVariants32[3], 1, 5, 8192, 8192, 8192);
-        profile(matmulVariants32[4], 1, 5, 8192, 8192, 8192);
+        // profile(matmulVariants32[3], 1, 5, 8192, 8192, 8192);
+        // profile(matmulVariants32[4], 1, 5, 8192, 8192, 8192);
         /*
         profile(matmulVariants32[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants32[2], 0, 1, 8192, 8192, 8192);
