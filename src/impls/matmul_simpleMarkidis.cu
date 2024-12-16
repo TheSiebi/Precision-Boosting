@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <type_traits>
 #include <cuda.h>
 #include <cuda_device_runtime_api.h>
 #include <cuda_runtime.h>
@@ -163,7 +164,7 @@ template flop_counts matmul_simpleMarkidis<5, 1, true>(float *A, float *B, float
  */
 template<int splitCount, int mergeCount, typename T, typename mulInputType, typename mulType, typename mulOutputType, bool useTensorCores, int matmulTensorVersion>
 flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
-                                        std::pair<int, int> mergePattern[mergeCount], T scale) 
+                                        std::pair<int, int> mergePattern[mergeCount], T scale, int mask = -1) 
 {
     assert((M % 16) == 0);
     assert((K % 16) == 0);
@@ -197,11 +198,12 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, ASize, cudaMemcpyHostToDevice));
     PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
 
+    using maskType = typename std::conditional<sizeof(mulInputType) >= sizeof(uint32_t), uint32_t, uint16_t>::type;
     PROFILE_SEGMENTS_SWITCH("split");
 
-    split_n_cuda<splitCount, T, mulInputType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale);
+    split_n_cuda<splitCount, T, mulInputType, maskType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale, mask);
     PRINT_ON_ERROR(cudaGetLastError());
-    split_n_cuda<splitCount, T, mulInputType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale);
+    split_n_cuda<splitCount, T, mulInputType, maskType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale, mask);
     PRINT_ON_ERROR(cudaGetLastError());
 
     CUDA_DEVICE_SYNCHRONIZE();
@@ -214,7 +216,21 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
         size_t cIndex = i * M * N;
         if constexpr(useTensorCores)
         {
-            matmulTensorCores<mulInputType, mulOutputType, matmulTensorVersion>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+            if constexpr(std::is_same<mulType, mulOutputType>())
+            {
+                matmulTensorCores<mulInputType, mulOutputType, matmulTensorVersion>
+                                 (deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+            }
+            else
+            {
+#if 0
+                matmulTensorCores<mulInputType, mulOutputType, matmulTensorVersion>
+                                 (deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+#else
+                matmulTensorAccCudaCores<mulInputType, mulType, mulOutputType>
+                                 (deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+#endif
+            }
             PRINT_ON_ERROR(cudaGetLastError());
         }
         else 
@@ -222,7 +238,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
             matmulCUDACores<mulInputType, mulType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
             PRINT_ON_ERROR(cudaGetLastError());
         }
-
         T factor = std::pow(scale, mergePattern[i].first) * std::pow(scale, mergePattern[i].second);
         if (factor > 1.0)
             divide_cuda<mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, factor);
@@ -467,10 +482,44 @@ flop_counts matmul_simpleMarkidis_double<12>(double *A, double *B, double *C, si
     return matmul_Markidis<2, 4, double, float, double, double, false, 4>(A, B, C, M, K, N, merges, 1.0);
 }
 
+template<>
+flop_counts matmul_simpleMarkidis_double<13>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, true, 4>(A, B, C, M, K, N, merges, 1 << 11, ~((1 << 0) - 1));
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_double<14>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int splitCountSq = splitCount * splitCount;
+    constexpr int mergeCount0 = 3;
+    constexpr int mergeCount1 = splitCountSq - mergeCount0;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
 
 
+    std::pair<int, int> *merges0 = merges + (splitCountSq - mergeCount0);
+    auto f0 = matmul_Markidis<splitCount, mergeCount0, double, half, float, double, false, 5>(A, B, C, M, K, N, merges0, 1 << 11);
 
+    double *C1;
+    PRINT_ON_ERROR(cudaMallocHost(&C1, M * N * sizeof(*C1)));
+    std::pair<int, int> *merges1 = merges + (splitCountSq - (mergeCount0 + mergeCount1));
+    auto f1 = matmul_Markidis<splitCount, mergeCount1, double, half, float, double, true, 4>(A, B, C1, M, K, N, merges1, 1 << 11);
 
+    for (int i = 0; i < M * N; i++)
+        C[i] += C1[i];
+
+    return {f0.flops16 + f1.flops16, f0.flops32 + f1.flops32, f0.flops64 + f1.flops64};
+}
 
 
 #if SM_VERSION >= 800

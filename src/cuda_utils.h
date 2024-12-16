@@ -11,7 +11,7 @@
 
 
 #ifdef NPROFILER
-#define CUDA_DEVICE_SYNCHRONIZE() 
+#define CUDA_DEVICE_SYNCHRONIZE() PRINT_ON_ERROR(cudaDeviceSynchronize())
 #else
 #define CUDA_DEVICE_SYNCHRONIZE() PRINT_ON_ERROR(cudaDeviceSynchronize())
 #endif

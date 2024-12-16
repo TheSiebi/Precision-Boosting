@@ -274,6 +274,18 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = false,      
     },
     {
+        .function = matmul_simpleMarkidis_double<13>,
+        .name = "Simple Markidis double v13",
+        .description = "Split 5 half with scaling, 25 half->float multiply & double accumulate (TENSOR CORES)",
+        .highestPerforming = false,      
+    },
+    {
+        .function = matmul_simpleMarkidis_double<14>,
+        .name = "Simple Markidis double v14",
+        .description = "Split 4 half with scaling, 3 float/double, 13 half->float/double multiply/accumulate (CUDA CORES, TENSOR CORES)",
+        .highestPerforming = false,      
+    },
+    {
         .function = matmul_cuda<double, double, 1, false>,
         .name = "matmul_cuda v1",
         .description = "double matmul using CUDA cores",
@@ -410,10 +422,10 @@ void printMatrix(T *A, int M, int N)
         for(int n = 0; n < N; n++)
         {
             if(n != 0)
-                printf(", ");
-            printf("%f", A[m*N + n]);
+                std::cout << ", ";
+            std::cout << A[m*N + n];
         }
-        printf("\n");
+        std::cout << std::endl;
     }
 }
 
@@ -422,7 +434,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
 {
     // Parameters
     // srand(time(NULL));
-    const size_t RUNS = 5;
+    const size_t RUNS = 10;
     const size_t NUM_TYPES = 5;
     bool failed = false;
     double *residual_sums = (double*) calloc(NUM_TYPES, sizeof(double));
@@ -472,6 +484,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
                     std::cout << "\t" << "Wrong at: \033[33mRow " << row << "\033[0m, \033[33mCol " << col << "\033[0m" << std::endl;
                     std::cout << "\t" << "Expected: \033[33m" << ref_sol << "\033[0m\tActual:   \033[33m" << wrong_val << "\033[0m" << std::endl;
                     std::cout << "\t" << "Error:    \033[33m" << rel_err << "\033[0m (rel) \033[33m" << abs_err << "\033[0m (abs)" << std::endl;
+
                 }
             }
             PRINT_ON_ERROR(cudaFreeHost(A));
@@ -486,9 +499,7 @@ void testMatmulCorrectness(matmul_variant<T>* function, LCG *rng)
         // Free memory
         PRINT_ON_ERROR(cudaFreeHost(C));
 
-        if (failed) {
-            break;
-        }
+        if(failed) break;
     }
 
     if (!failed) {

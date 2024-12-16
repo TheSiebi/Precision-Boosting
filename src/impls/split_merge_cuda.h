@@ -22,9 +22,9 @@ __device__ returnType split_element(srcType elem);
 __global__ void split_4_tree(double *A, half *dA_high, half *dA_middleUp, half *dA_middleDown, half *dA_low);
 
 
-template<int splitCount, typename srcType, typename trgtType>
+template<int splitCount, typename srcType, typename trgtType, typename maskType>
 __global__
-void split_n_cuda(srcType *A, trgtType *ASplit, int N, srcType scale)
+void split_n_cuda(srcType *A, trgtType *ASplit, int N, srcType scale, maskType mask)
 {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if(i < N)
@@ -35,6 +35,12 @@ void split_n_cuda(srcType *A, trgtType *ASplit, int N, srcType scale)
         for(int j = 0; j < splitCount; j++)
         {
             trgtType mainPart = (trgtType)(residual * factor);
+            if(j + 1 < splitCount)
+            {
+                maskType mainPartI = *(reinterpret_cast<maskType*>(&mainPart));
+                mainPartI &= mask;
+                mainPart = *(reinterpret_cast<trgtType*>(&mainPartI));
+            }
             ASplit[j*N+i] = mainPart;
             residual -= (srcType)mainPart / factor;
             factor *= scale;

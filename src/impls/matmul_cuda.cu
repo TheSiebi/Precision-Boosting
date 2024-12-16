@@ -271,7 +271,6 @@ __global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, OutputType
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
             wmma::fill_fragment(cFrag[i][j], 0.0f);
 
-
     // Loads are vectorized and each thread will load 4 elements into SMEM
     const int elemsPerThread = 4;
     // Calculate indices that this thread will load from GMEM to SMEM
@@ -932,6 +931,138 @@ template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, half, 4>(half*, half*, half*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
+
+//blockDim.x == warpSize
+//blockDim.y == BlockSizeN / (WarpSizeN * FragSizeN)
+//blockDim.z == BlockSizeM / (WarpSizeM * FragSizeM)
+//gridDim.x == RoundUp(N / BlockSizeN)
+//gridDim.y == RoundUp(M / BlockSizeM)
+//KStep % WarpSizeK == 0
+template<typename InputType, typename MulType, typename OutputType,
+         int BlockSizeM, int BlockSizeN, int KStep, 
+         int BlockDimM, int BlockDimN,
+         int WarpSizeM, int WarpSizeN,
+         int FragSizeM, int FragSizeK, int FragSizeN>
+__global__ void matmul_kernel_TensorAccCuda_v0(InputType *A, InputType *B, OutputType *C, 
+                                               size_t M, size_t K, size_t N)
+{
+    using namespace nvcuda;
+
+    constexpr int FragSize = FragSizeM * FragSizeN;
+    constexpr int BlockDim = BlockDimM * BlockDimN;
+
+    __shared__ MulType CTmp[BlockDim][WarpSizeM][WarpSizeN][FragSize];
+    __shared__ OutputType CAcc[BlockDim][WarpSizeM][WarpSizeN][FragSize];
+
+    const int scalar_blockMBase = blockIdx.y * BlockSizeM;
+    const int scalar_blockNBase = blockIdx.x * BlockSizeN;
+    const int scalar_blockBaseA = scalar_blockMBase * K;
+    const int scalar_blockBaseB = scalar_blockNBase;
+    const int scalar_blockBaseC = scalar_blockMBase * N + scalar_blockNBase;
+
+    const int warpNOffset = threadIdx.y * (WarpSizeN * FragSizeN);
+    const int warpMOffset = threadIdx.z * (WarpSizeM * FragSizeM);
+    const int warpIndex = threadIdx.z * BlockDimN + threadIdx.y;
+    const int oOffset = threadIdx.x;
+
+    wmma::fragment<wmma::matrix_a, FragSizeM, FragSizeN, FragSizeK, InputType, wmma::row_major> aFrag[WarpSizeM];
+    wmma::fragment<wmma::matrix_b, FragSizeM, FragSizeN, FragSizeK, InputType, wmma::row_major> bFrag[WarpSizeN];
+    wmma::fragment<wmma::accumulator, FragSizeM, FragSizeN, FragSizeK, MulType> cFrag[WarpSizeM][WarpSizeN];
+
+
+    for(int m = 0; m < WarpSizeM; m++)
+        for(int n = 0; n < WarpSizeN; n++)
+            for(int oBase = 0; oBase < FragSize; oBase+=WARP_SIZE)
+                CAcc[warpIndex][m][n][oBase+oOffset] = 0;
+    __syncthreads();
+
+#if 1
+    for (int kBase = 0; kBase < K; kBase += KStep) 
+    {
+        for(int kOffset = 0; kOffset < KStep; kOffset += FragSizeK)
+        {
+            int k = kBase + kOffset;
+            for(int m = 0; m < WarpSizeM; m++)
+                for(int n = 0; n < WarpSizeN; n++)
+                    wmma::fill_fragment(cFrag[m][n], 0);
+            for(int m = 0; m < WarpSizeM; m++)
+            {
+                int offsetA = scalar_blockBaseA + (warpMOffset + m * FragSizeM) * K + k;
+                wmma::load_matrix_sync(aFrag[m], A + offsetA, K);
+            }
+            for(int n = 0; n < WarpSizeN; n++)
+            {
+                int offsetB = scalar_blockBaseB + k * N + warpNOffset + n * FragSizeN;
+                wmma::load_matrix_sync(bFrag[n], B + offsetB, N);
+            }
+            for(int m = 0; m < WarpSizeM; m++)
+                for(int n = 0; n < WarpSizeN; n++)
+                    wmma::mma_sync(cFrag[m][n], aFrag[m], bFrag[n], cFrag[m][n]);
+
+            for(int m = 0; m < WarpSizeM; m++)
+                for(int n = 0; n < WarpSizeN; n++)
+                    wmma::store_matrix_sync(CTmp[warpIndex][m][n], cFrag[m][n], FragSizeN, wmma::mem_row_major);
+        __syncthreads();
+
+            for(int m = 0; m < WarpSizeM; m++)
+                for(int n = 0; n < WarpSizeN; n++)
+                    for(int oBase = 0; oBase < FragSize; oBase+=WARP_SIZE)
+                        CAcc[warpIndex][m][n][oBase+oOffset] += (OutputType)CTmp[warpIndex][m][n][oBase+oOffset];
+        __syncthreads();
+        }
+    }
+#endif
+
+    int offsetC = scalar_blockBaseC + warpMOffset * N + warpNOffset;
+    for(int m = 0; m < WarpSizeM; m++)
+    {
+        for(int n = 0; n < WarpSizeN; n++)
+        {
+            for(int oBase = 0; oBase < FragSize; oBase+=WARP_SIZE)
+            {
+                int o = oBase + oOffset;
+                int mOffset = (m * FragSizeM + (o/FragSizeN)) * N;
+                int nOffset = n * FragSizeN + (o%FragSizeN);
+                int index = offsetC + mOffset + nOffset;
+                assert(index >= 0);
+                assert(index < M * N);
+                C[index] = CAcc[warpIndex][m][n][o];
+            }
+        }
+    }
+}
+
+
+template<typename InputType, typename MulType, typename OutputType>
+void matmulTensorAccCudaCores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
+{
+    const int BLOCK_SIZE_M = std::is_same<InputType, half>::value ? 64 : 32;
+    const int BLOCK_SIZE_N = std::is_same<InputType, half>::value ? 64 : 32;
+    const int K_STEP       = 16;
+    const int WARP_SIZE_M  = 2;
+    const int WARP_SIZE_N  = 2;
+    constexpr int FRAG_SIZE_M  = std::is_same<InputType, half>::value ? 16 : 8;
+    constexpr int FRAG_SIZE_K  = std::is_same<InputType, half>::value ? 16 : 4;
+    constexpr int FRAG_SIZE_N  = std::is_same<InputType, half>::value ? 16 : 8;
+    constexpr int BLOCK_DIM_M = BLOCK_SIZE_M / (WARP_SIZE_M * FRAG_SIZE_M);
+    constexpr int BLOCK_DIM_N = BLOCK_SIZE_N / (WARP_SIZE_N * FRAG_SIZE_N); 
+    
+    dim3 threadsPerBlock(WARP_SIZE, BLOCK_DIM_N, BLOCK_DIM_M);
+    dim3 blocks(DivRoundUp(N, BLOCK_SIZE_N), DivRoundUp(M, BLOCK_SIZE_M));
+
+    matmul_kernel_TensorAccCuda_v0<InputType, MulType, OutputType,
+        BLOCK_SIZE_M, BLOCK_SIZE_N, K_STEP,
+        BLOCK_DIM_M, BLOCK_DIM_N,
+        WARP_SIZE_M, WARP_SIZE_N,
+        FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>
+            <<<blocks, threadsPerBlock>>>
+            (A, B, C, M, K, N);
+    PRINT_ON_ERROR(cudaGetLastError());
+}
+
+
+
+template void matmulTensorAccCudaCores<half, float, double>(half *A, half *B, double *C, size_t M, size_t K, size_t N);
 
 template<typename InputType, typename OutputType, int version, bool useTensorCores>
 flop_counts matmul_cuda(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
