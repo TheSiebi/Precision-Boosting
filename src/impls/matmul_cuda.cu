@@ -263,9 +263,9 @@ __global__ void matmul_kernel_Tensor_v4(const half *A, const half *B, OutputType
     const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
     const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
 
-    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
-    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
@@ -374,10 +374,10 @@ __global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, OutputType
     const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
     const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
 
-    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
-    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
-    wmma::fragment<wmma::accumulator, 16, 16, 16, OutputType> tmpFrag;
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, OutputType> tmpFrag;
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
         for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
