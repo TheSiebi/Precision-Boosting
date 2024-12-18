@@ -156,7 +156,7 @@ extern "C" {
 
 void profiler_reset();
 void profiler_segments_print(long flops16, long flops32, long flops64);
-char* profiler_segments_print_json(long M, long K, long N);
+char* profiler_segments_print_json();
 
 #ifdef __cplusplus
 }

@@ -119,15 +119,9 @@ void profiler_segments_print(long flops16, long flops32, long flops64)
     profiler_segments_print_children(&profile_segment_sentinel, overallTime, 0);
 }
 
-char* profiler_segments_print_json(long M, long K, long N) {
-
-    char buffer[64];
-    // We only care about segments at level 1
-    snprintf(buffer, sizeof(buffer), "\n%ld,%ld,%ld\n", M, K, N);
-    strcat(json_output, buffer);
+char* profiler_segments_print_json() {
     profiler_reverse_list();
     profiler_segments_print_children_json(&profile_segment_sentinel, 0);
-
     return &json_output[0];
 }
 

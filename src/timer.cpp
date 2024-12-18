@@ -12,6 +12,7 @@
 #include "precision.h"
 #include "matcache.h"
 #include "cuda_utils.h"
+#include "profiler.h"
 
 
 #define NS_PER_SECOND 1e9
@@ -55,6 +56,8 @@ cJSON* run_to_json(struct run *r, int iterations, int numInputTypes, int precisi
 
     cJSON *timings_array = cJSON_CreateDoubleArray(r->timings, iterations);
     cJSON_AddItemToObject(json, "timings", timings_array);
+
+    cJSON_AddStringToObject(json, "profile_output", r->profile_output);
 
     cJSON_AddBoolToObject(json, "sanity_check", r->sanity_check);
 
@@ -137,6 +140,7 @@ bool timeRun(double *timings, flop_counts *counts, int iterations, int input_typ
 
     printf("\r%*s\r", 100, ""); // clear warmup progress line
 
+    profiler_reset();
     for(int i = 0; i < iterations; i++)
     {
         printf("\r\tTiming Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", i + 1, iterations, M, K, N);
@@ -260,6 +264,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         flop_counts counts;
         bool sanityCheck = timeRun<T>(&timings[i * maxIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
         
+        char* profile_output = profiler_segments_print_json();
+
         int m_idx = i * numInputTypes;
         for (int input_type = 0; input_type < numInputTypes; input_type++) {
             double *residuals_idx = &residuals[(i * numInputTypes + input_type) * maxIterationsPerInputType];
@@ -280,6 +286,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
             .timings = &timings[i * maxIterationsPerConfig],
+            .profile_output = profile_output,
             .sanity_check = sanityCheck,
             .precMs = &ms[m_idx],
         };

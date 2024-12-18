@@ -65,6 +65,7 @@ struct run
     // Theoretical, mathematical number of flops
     size_t math_flops;
     double *timings;
+    char* profile_output;
     bool sanity_check;
     struct precisionMeasurement *precMs;
 };
