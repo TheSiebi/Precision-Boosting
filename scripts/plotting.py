@@ -330,6 +330,79 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
 #     plt.tight_layout()
 #     plt.savefig(os.path.join(input_folder, f"{file_prefix}_qq_plots.png"))
 
+
+def parse_profile_text(profile_text: str):
+    """
+    Parse profile text into a dictionary
+
+    Args:
+        profile_text: Text containing profile data
+
+    Returns:
+        Dictionary containing profile data
+    """
+    profile_data = {}
+
+    # Split text by , and iterate over pairs, also always add previous value
+    tmp = profile_text.split(',')
+    last_value = 0
+    for i in range(0, len(tmp)-1, 2):
+        key = tmp[i].strip()
+        value = float(tmp[i+1].strip()) + last_value
+        last_value = value
+        profile_data[key] = value
+
+    return profile_data
+
+def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
+    """
+    Generate profile plot showcasing profile segments and save it at timings/input_folder/plot_filename_profile.png
+
+    Args:
+        data: JSON data containing performance information
+        input_folder: Name of input folder at timings
+        plot_filename: Plot will be saved as plot_filename_profile.png
+    """
+    plot_setup(ylabel='[s]')
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+
+    # Get profile data
+    runs = data['runs']
+    sample_counts = [len(run['timings']) for run in runs]
+    sizes = [run['N'] for run in runs] # Only use square matrices for now
+    profile_data = [parse_profile_text(run['profile_output']) for run in runs]
+
+    # Divide all values by sample count to get average time per sample
+    for i in range(len(profile_data)):
+        for key in profile_data[i].keys():
+            profile_data[i][key] /= sample_counts[i]
+
+    # Plot segment runtimes
+    for key in profile_data[0].keys():
+        segment_runtimes = [profile_data[i][key] for i in range(len(profile_data))]
+        plt.plot(sizes, segment_runtimes, color='0.0', linewidth=0.5)
+
+    # Fill area between profile segment runtimes
+    i = 0
+    for key in reversed(profile_data[0].keys()):
+        segment_runtimes = [profile_data[i][key] for i in range(len(profile_data))]
+        plt.fill_between(sizes, segment_runtimes, 0, label=key, alpha=1.0, color=line_colors[i%len(line_colors)])
+        i+=1
+
+    # Make sure x-ticks are integers and correspond to data points
+    plt.xticks(sizes, sizes)
+
+    title_suffix = f" on {data['meta']['gpu model']}"
+    plt.title("Profile of " + data['meta']['function name'] + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
+    plt.legend()
+    plt.gca().set_ylim(bottom=0)
+    output_dir = input_folder
+    output_file = f"{plot_filename}_profile.png"
+    print(output_dir)
+    plt.savefig(os.path.join(output_dir, output_file))
+    plt.close()
+
+
 def generate_performance_plot(data: dict, input_folder: str, plot_filename: str):
     """
     Generate performance plot and save it at timings/input_folder/plot_filename.png
@@ -383,6 +456,7 @@ def main():
     parser.add_argument('--compare', action='store_true', help='Flag to combine performance plots into a single plot.')
     parser.add_argument('--speedup', action='store_true', help='Flag to generate speedup plot.')
     parser.add_argument('--precision', action='store_true', help='Flag to generate precision plot.')
+    parser.add_argument('--profile', action='store_true', help='Flag to generate profile plot.')
     args = parser.parse_args()
 
     rcParams['font.sans-serif'] = ['Tahoma', 'Verdana', 'Gill Sans MT', 'Calibri', 'DejaVu Sans']
@@ -405,6 +479,11 @@ def main():
         elif args.precision:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_precision_comparison_plot(json_data, args.input_folder)
+        elif args.profile:
+            for file in os.listdir(input_folder):
+                if file.endswith('.json'):
+                    json_data = load_json(os.path.join(input_folder, file))
+                    generate_profile_plot(json_data, args.input_folder, file[:-5])
         else:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):

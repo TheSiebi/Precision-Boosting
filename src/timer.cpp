@@ -7,6 +7,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <math.h>
+#include <string.h>
 #include "machine.h"
 #include "../lib/cjson/cJSON.h"
 #include "precision.h"
@@ -58,6 +59,7 @@ cJSON* run_to_json(struct run *r, int iterations, int numInputTypes, int precisi
     cJSON_AddItemToObject(json, "timings", timings_array);
 
     cJSON_AddStringToObject(json, "profile_output", r->profile_output);
+    free(r->profile_output);
 
     cJSON_AddBoolToObject(json, "sanity_check", r->sanity_check);
 
@@ -218,7 +220,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 10;
+    int powerOfMaxSize = 13;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
@@ -265,6 +267,9 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         bool sanityCheck = timeRun<T>(&timings[i * maxIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
         
         char* profile_output = profiler_segments_print_json();
+        size_t len = strlen(profile_output);
+        char* local_copy = (char*)calloc(len + 1, sizeof(*local_copy));
+        memcpy(local_copy, profile_output, len + 1);
 
         int m_idx = i * numInputTypes;
         for (int input_type = 0; input_type < numInputTypes; input_type++) {
@@ -286,7 +291,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
             .timings = &timings[i * maxIterationsPerConfig],
-            .profile_output = profile_output,
+            .profile_output = local_copy,
             .sanity_check = sanityCheck,
             .precMs = &ms[m_idx],
         };
