@@ -277,7 +277,7 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     return counts;
 }
 
-bool compareByDescendingSum(const std::pair<int, int>& a, const std::pair<int, int>& b) {
+static bool compareByDescendingSum(const std::pair<int, int>& a, const std::pair<int, int>& b) {
     return (a.first + a.second) > (b.first + b.second);
 }
 
