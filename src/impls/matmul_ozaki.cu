@@ -4,6 +4,9 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
+
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -336,19 +339,26 @@ void ozaki_split_to_float_fixed_cuda(double* A, float* ASplit, const size_t M, c
     const int warpIndex = threadIdx.x;
     const int scalar_AOffset = blockIdx.x * N;
 
+    double mu = 0;
+    for(size_t j = 0; j < N; j+=WARP_SIZE)
+        mu = max(mu, abs(A[scalar_AOffset+j+warpIndex]));
+
     for(int k = 0; k < splitCount-1; k++)
     {
-        double mu = 0;
-        for(size_t j = 0; j < N; j++)
-            mu = max(mu, abs(A[scalar_AOffset+j]));
+        //get max mu accross all warps
+        for(int i = 16; i >= 1; i/=2)
+            mu = max(mu, __shfl_xor_sync(0xffffffff, mu, i, 32));
         float w = exp2f(ceilf(log2f(mu)) + beta);
 
+        mu = 0;
         for(size_t j = 0; j < N; j+=WARP_SIZE)
         {
             size_t ij = scalar_AOffset+j+warpIndex;
             float value = (float)(A[ij] + (double)w) - w;
             ASplit[k*M*N + ij] = value;
-            A[ij] -= (double)value;
+            double newA = A[ij] - (double)value;
+            A[ij] = newA;
+            mu = max(mu, abs(newA));
         }
     }
 
@@ -436,13 +446,76 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
 
     PROFILE_SEGMENTS_SWITCH("matmul");
 
+#if 1
+    cudaStream_t streams[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
     for(int i = 0; i < mergeCount; i++)
     {
         size_t aIndex = mergePattern[i].first * M * K;
         size_t bIndex = mergePattern[i].second * K * N;
         size_t cIndex = i * M * N;
-        matmulCUDACores<float, float, float, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+        matmulCUDACoresStream<float, float, float, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
     }
+#else
+    cublasHandle_t handle;
+    cublasStatus_t status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("CUBLAS initialization failed. %s: %s\n",
+                cublasGetStatusName(status), cublasGetStatusString(status));
+        flop_counts counts = {0L, 0L, 0L};
+        return counts;
+    }
+    const float cublas_alpha = 1.0f;
+    const float cublas_beta = 0.0f;
+#if 0
+    for(int i = 0; i < mergeCount; i++)
+    {
+        size_t aIndex = mergePattern[i].first * M * K;
+        size_t bIndex = mergePattern[i].second * K * N;
+        size_t cIndex = i * M * N;
+        status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                             N, M, K,
+                             &cublas_alpha,
+                             &deviceB[bIndex], N,
+                             &deviceA[aIndex], K,
+                             &cublas_beta,
+                             &deviceC[cIndex], N);
+    }
+#else
+    float *APointers[mergeCount];
+    float *BPointers[mergeCount];
+    float *CPointers[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+    {
+        size_t aIndex = mergePattern[i].first * M * K;
+        size_t bIndex = mergePattern[i].second * K * N;
+        size_t cIndex = i * M * N;
+        APointers[i] = &deviceA[aIndex];
+        BPointers[i] = &deviceB[bIndex];
+        CPointers[i] = &deviceC[cIndex];
+    }
+    float **device_APointers, **device_BPointers, **device_CPointers;
+    PRINT_ON_ERROR(cudaMalloc(&device_APointers, sizeof(float*) * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&device_BPointers, sizeof(float*) * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&device_CPointers, sizeof(float*) * mergeCount));
+
+    PRINT_ON_ERROR(cudaMemcpy(device_APointers, APointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(device_BPointers, BPointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(device_CPointers, CPointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+
+    status = cublasSgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                N, M, K,
+                                &cublas_alpha,
+                                device_BPointers, N,
+                                device_APointers, K,
+                                &cublas_beta,
+                                device_CPointers, N,
+                                mergeCount);
+
+#endif
+#endif
+
     CUDA_DEVICE_SYNCHRONIZE();
 
     PROFILE_SEGMENTS_SWITCH("merge");
@@ -462,6 +535,11 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
     PRINT_ON_ERROR(cudaFree(deviceAFull));
     PRINT_ON_ERROR(cudaFree(deviceBFull));
 
+#if 1
+    for(int i = 0; i < mergeCount; i++)
+        PRINT_ON_ERROR(cudaStreamDestroy(streams[i]));
+#endif
+
     PROFILE_SEGMENT_FUNCTION_END();
 
     int64_t nA = splitCount;
@@ -478,6 +556,18 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
 template<>
 flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_ozaki<4>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
     constexpr int splitCount = 5;
     constexpr int mergeCount = splitCount * splitCount;
     std::pair<int, int> merges[mergeCount];
@@ -485,4 +575,57 @@ flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K,
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
     return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_ozaki<5>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 6;
+    constexpr int mergeCount = 36;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+template<>
+flop_counts matmul_ozaki<6>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = 10;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+
+template<>
+flop_counts matmul_ozaki<7>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = 20;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+template<>
+flop_counts matmul_ozaki<8>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 6;
+    constexpr int mergeCount = 25;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
 }

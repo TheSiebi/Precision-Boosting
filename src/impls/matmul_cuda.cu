@@ -896,6 +896,51 @@ constexpr struct matmulTemplateArgsCUDA getMatmulTemplateArgsCUDA()
 }
 
 template<typename InputType, typename MulType, typename OutputType, int version>
+void matmulCUDACoresStream(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N, cudaStream_t stream)
+{
+    if constexpr (version == 0)
+    {
+        dim3 threadsPerBlock(16, 16);
+        dim3 blocks(M/threadsPerBlock.x, N/threadsPerBlock.y);
+        matmul_kernel_CUDA_v0<InputType, MulType, OutputType>
+                        <<<blocks, threadsPerBlock, 0, stream>>>(A, B, C, M, K, N);
+    }
+    else if constexpr (version == 1)
+    {
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgsCUDA p = getMatmulTemplateArgsCUDA<0>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, MulType, OutputType>
+                <<<blocks, p.threadsPerBlock, 0, stream>>>(A, B, C, M, K, N);
+        } 
+        else 
+        {
+            constexpr struct matmulTemplateArgsCUDA p = getMatmulTemplateArgsCUDA<1>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            matmul_kernel_CUDA_v1<p.BM, p.BN, p.BK, p.WM, p.WN, p.WMITER, p.WNITER, p.TM, p.TN, InputType, MulType, OutputType>
+                <<<blocks, p.threadsPerBlock, 0, stream>>>(A, B, C, M, K, N);
+        }
+    }
+}
+
+template void matmulCUDACoresStream<half, float, float, 0>(half*, half*, float*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<half, float, float, 1>(half*, half*, float*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<half, float, double, 1>(half*, half*, double*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<half, double, double, 1>(half*, half*, double*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<float, float, float, 1>(float*, float*, float*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<float, float, double, 1>(float*, float*, double*, size_t, size_t, size_t, cudaStream_t);
+template void matmulCUDACoresStream<float, double, double, 1>(float*, float*, double*, size_t, size_t, size_t, cudaStream_t);
+
+template<typename InputType, typename MulType, typename OutputType, int version>
 void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N)
 {
     if constexpr (version == 0)

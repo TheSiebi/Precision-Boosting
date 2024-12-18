@@ -189,11 +189,49 @@ matmul_variant<double> matmulVariants64[] =
         .description = "Ozaki FP64 using FP32. Matmul on GPU, split-merge on CPU",
         .highestPerforming = true,
     },
+/*
     {
         .function = matmul_ozaki<2>,
         .name = "Matmul Ozaki v2",
         .description = "Ozaki FP64 using FP16. Matmul on GPU, split-merge on CPU",
         .highestPerforming = true,
+    },
+    */
+    {
+        .function = matmul_ozaki<3>,
+        .name = "Matmul Ozaki v3",
+        .description = "Ozaki FP64 using FP32 4 splits and 16 matmuls",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<4>,
+        .name = "Matmul Ozaki v4",
+        .description = "Ozaki FP64 using FP32 5 splits and 25 matmuls",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<5>,
+        .name = "Matmul Ozaki v5",
+        .description = "Ozaki FP64 using FP32 7 splits and 36 matmuls",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<6>,
+        .name = "Matmul Ozaki v6",
+        .description = "Ozaki FP64 using FP32 4 splits and 10 matmuls",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<7>,
+        .name = "Matmul Ozaki v7",
+        .description = "Ozaki FP64 using FP32 5 splits and 20 matmuls",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<8>,
+        .name = "Matmul Ozaki v8",
+        .description = "Ozaki FP64 using FP32 6 splits and 25 matmuls",
+        .highestPerforming = false,
     },
     {
         .function = matmul_Ootomo_double_v0,
@@ -530,6 +568,9 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, size_t M, si
     T *A = (T*)calloc(M * K, sizeof(*A));
     T *B = (T*)calloc(K * N, sizeof(*B));
     T *C = (T*)calloc(M * N, sizeof(*C));
+    LCG rng = rng_seeded(0xC0FEE);
+    fill_matrices(&rng, 0, A, B, M*K, K*N);
+
     flop_counts counts;
 
     profiler_reset();
@@ -572,9 +613,10 @@ int main(int argc, char *argv[])
         }
         test_ozaki_split_correctness(&rng, 0.0002, 10, false);
         
+        //profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
+        //profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
+        //profile(matmulVariants64[3], 0, 1, 8192, 8192, 8192);
         /*        
-        profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
-        profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[2], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[3], 0, 1, 8192, 8192, 8192);
         profile(matmulVariants64[4], 0, 1, 8192, 8192, 8192);
