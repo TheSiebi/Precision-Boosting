@@ -78,6 +78,12 @@ matmul_variant<float> matmulVariants32[] =
         .highestPerforming = true,
     },
     {
+        .function = matmul_simpleMarkidis<6, 1, true>,
+        .name = "Simple Markidis v6 stream:1 scale:true",
+        .description = "Simple markidis with shared memory, vectorized loads, double buffering, accumulation outside tensor cores and split scaling",
+        .highestPerforming = true,
+    },
+    {
         .function = matmul_markidis,
         .name = "Markidis",
         .description = "Markidis in a single cuda kernel",

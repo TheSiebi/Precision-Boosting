@@ -6,6 +6,8 @@
 #include <mma.h>
 #include <driver_types.h>
 #include <type_traits>
+#include <cuda/pipeline>
+#include <cooperative_groups.h>
 
 #include "../matmul.h"
 #include "./matmul_cuda.h"
@@ -461,6 +463,179 @@ __global__ void matmul_kernel_Tensor_v5(const half *A, const half *B, OutputType
     }
 }
 
+template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
+          const int N_WARP_ROWS_PER_BLOCK,
+          const int N_WARP_COLS_PER_BLOCK,
+          const int N_WMMA_ROWS_PER_WARP,
+          const int N_WMMA_COLS_PER_WARP,
+          const int WMMA_M,
+          const int WMMA_K,
+          const int WMMA_N,
+          typename OutputType>
+__global__ void matmul_kernel_Tensor_v6(const half *A, const half *B, OutputType *C, size_t M, size_t K, size_t N)
+{
+    using namespace nvcuda;
+
+    constexpr size_t nPipelineStages = 2;
+    extern __shared__ half smem[];
+    // allocate space for the current blocktile in shared memory
+    half* As = smem;
+    half* Bs = smem + nPipelineStages * BM * BK;
+
+    // Move blocktile to beggining of A's row and B's column
+    const int cRow = blockIdx.x;
+    const int cCol = blockIdx.y;
+    A += cRow * BM * K;
+    B += cCol * BN;
+    C += cRow * BM * N + cCol * BN;
+
+    // warpID in threadBlock
+    const int warpID = threadIdx.x / WARP_SIZE;
+    // thread LaneID in warp
+    // const int laneID = threadIdx.x % WARP_SIZE;
+    // The indices this warp has in the block tile
+    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
+    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> aFrag[N_WMMA_ROWS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, OutputType> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, OutputType> tmpFrag;
+
+    for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
+        for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
+            wmma::fill_fragment(cFrag[i][j], 0.0f);
+
+
+    int currentPipelineStage = 0;
+    const int memcpyAsyncSize = 16;
+    const int elemsPerAsyncCopy = memcpyAsyncSize / sizeof(half);
+
+    const int innerRowA = threadIdx.x / (BK / elemsPerAsyncCopy);
+    const int innerColA = threadIdx.x % (BK / elemsPerAsyncCopy);
+    const int innerRowB = threadIdx.x / (BN / elemsPerAsyncCopy);
+    const int innerColB = threadIdx.x % (BN / elemsPerAsyncCopy);
+    // complete #rows that gets loaded in one loading iteration
+    const int rowStrideA = elemsPerAsyncCopy * blockDim.x / BK;
+    const int rowStrideB = elemsPerAsyncCopy * blockDim.x / BN;
+
+    int As_shared = __cvta_generic_to_shared(As);
+    int Bs_shared = __cvta_generic_to_shared(Bs);
+
+    for (int offset = 0; offset + rowStrideA <= BM; offset += rowStrideA)
+    {
+        asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+            : "r"(As_shared + (currentPipelineStage * BM * BK + (innerRowA + offset) * BK + innerColA * elemsPerAsyncCopy) * (int)sizeof(half)), 
+              "l"(&A[(innerRowA + offset) * K + innerColA * elemsPerAsyncCopy]));
+    }
+    for (int offset = 0; offset + rowStrideB <= BK; offset += rowStrideB)
+    {
+        asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+            : "r"(Bs_shared + (currentPipelineStage * BK * BN + (innerRowB + offset) * BN + innerColB * elemsPerAsyncCopy) * (int)sizeof(half)), 
+              "l"(&B[(innerRowB + offset) * N + innerColB * elemsPerAsyncCopy]));
+    }
+
+    // advance blocktile
+    A += BK;
+    B += BK * N;
+    asm ("cp.async.commit_group;\n" ::);
+    asm ("cp.async.wait_group 0;\n" ::);
+    __syncthreads();
+
+    // Loop over all block tiles
+    for (int bkIdx = BK; bkIdx < K; bkIdx += BK)
+    {
+        for (int offset = 0; offset + rowStrideA <= BM; offset += rowStrideA)
+        {
+            asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                : "r"(As_shared + ((1 - currentPipelineStage) * BM * BK + (innerRowA + offset) * BK + innerColA * elemsPerAsyncCopy) * (int)sizeof(half)), 
+                "l"(&A[(innerRowA + offset) * K + innerColA * elemsPerAsyncCopy]));
+        }
+        for (int offset = 0; offset + rowStrideB <= BK; offset += rowStrideB)
+        {
+            asm ("cp.async.ca.shared.global [%0], [%1], 16;\n" :
+                : "r"(Bs_shared + ((1 - currentPipelineStage) * BK * BN + (innerRowB + offset) * BN + innerColB * elemsPerAsyncCopy) * (int)sizeof(half)), 
+                "l"(&B[(innerRowB + offset) * N + innerColB * elemsPerAsyncCopy]));
+        }
+
+        // start of data belonging to respective warp
+        int warpOffsetA = warpRow * WM * BK;
+        int warpOffsetB = warpCol * WN;
+        
+        for (int chunk = 0; chunk < CHUNK_K; chunk++)
+        {   
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+                wmma::load_matrix_sync(aFrag[tileRow], As + currentPipelineStage * BM * BK + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                wmma::load_matrix_sync(bFrag[tileCol], Bs + currentPipelineStage * BK * BN + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+            
+            // calculate mmul
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            {
+                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                {
+                    wmma::fill_fragment(tmpFrag, 0.0f);
+                    wmma::mma_sync(tmpFrag, aFrag[tileRow], bFrag[tileCol], tmpFrag);
+
+                    // accumulate outside tensor cores to avoid RZ
+                    for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+                        cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
+
+                }
+            }
+        }
+
+        // advance blocktile
+        A += BK;
+        B += BK * N;
+        currentPipelineStage = 1 - currentPipelineStage;
+        asm ("cp.async.commit_group;\n" ::);
+        asm ("cp.async.wait_group 0;\n" ::);
+        __syncthreads();
+    }
+
+    // start of data belonging to respective warp
+    int warpOffsetA = warpRow * WM * BK;
+    int warpOffsetB = warpCol * WN;
+    
+    for (int chunk = 0; chunk < CHUNK_K; chunk++)
+    {   
+        for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            wmma::load_matrix_sync(aFrag[tileRow], As + currentPipelineStage * BM * BK + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+            wmma::load_matrix_sync(bFrag[tileCol], Bs + currentPipelineStage * BK * BN + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+        
+        // calculate mmul
+        for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+        {
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+            {
+                wmma::fill_fragment(tmpFrag, 0.0f);
+                wmma::mma_sync(tmpFrag, aFrag[tileRow], bFrag[tileCol], tmpFrag);
+
+                // accumulate outside tensor cores to avoid RZ
+                for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+                    cFrag[tileRow][tileCol].x[i] += tmpFrag.x[i];
+
+            }
+        }
+    }
+
+
+    // Store results back to C matrix
+    OutputType *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
+    }
+}
+
 
 template<typename InputType, typename MulType, typename OutputType>
 __global__ void matmul_kernel_CUDA_v0(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N) 
@@ -784,6 +959,10 @@ constexpr struct matmulScalesTensor getArgScales(int configuration) {
     {
         return {8, 16, 2, 4, 4};
     }
+    else if (configuration == 4)
+    {
+        return {8, 8, 4, 4, 4};
+    }
     // Warning: Before adding new configuration, make sure
     // that the shared memory of the GPU is large enough to handle the block dimensions
 
@@ -893,7 +1072,7 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
                 matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             } 
-            else 
+            else
             {
                 matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
@@ -913,11 +1092,41 @@ void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size
                 matmul_kernel_Tensor_v4<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             } 
-            else 
+            else
             {
                 matmul_kernel_Tensor_v5<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
                         <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
             }
+        }
+    }
+    else if constexpr (version == 6)
+    {
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            int nPipelineStages = 2;
+            int smemSize = nPipelineStages * p.BM * p.BK * sizeof(half) + nPipelineStages * p.BK * p.BN * sizeof(half);
+            matmul_kernel_Tensor_v6<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
+                    <<<blocks, p.threadsPerBlock, smemSize>>>(A, B, C, M, K, N);
+        }
+        else
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<4, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            int nPipelineStages = 2;
+            int smemSize = nPipelineStages * p.BM * p.BK * sizeof(half) + nPipelineStages * p.BK * p.BN * sizeof(half);
+            cudaFuncSetAttribute(matmul_kernel_Tensor_v6<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>, cudaFuncAttributeMaxDynamicSharedMemorySize, smemSize);
+            matmul_kernel_Tensor_v6<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP, FRAG_SIZE_M, FRAG_SIZE_K, FRAG_SIZE_N, OutputType>
+                    <<<blocks, p.threadsPerBlock, smemSize>>>(A, B, C, M, K, N);
         }
     }
 
@@ -931,6 +1140,7 @@ template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, half, 4>(half*, half*, half*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
+template void matmulTensorCores<half, float, 6>(half*, half*, float*, size_t, size_t, size_t);
 
 //blockDim.x == warpSize
 //blockDim.y == BlockSizeN / (WarpSizeN * FragSizeN)
