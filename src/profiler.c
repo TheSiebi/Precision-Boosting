@@ -39,7 +39,7 @@ void profiler_reset()
 
 static void profiler_segments_print_children(struct profile_segment *parent, double parentTime, int level)
 {
-    double overallTime = (double)profile_segment_sentinel.childTime / FREQUENCY;
+    double overallTime = (double)profile_segment_sentinel.childTime/1e9;
     static const char *spaces = "                                    ";
     for(struct profile_segment *segment = profile_segment_list;
         segment;
@@ -48,8 +48,8 @@ static void profiler_segments_print_children(struct profile_segment *parent, dou
         if(segment->parent != parent)
             continue;
 
-        double totalTime = (double)segment->totalTime / FREQUENCY;
-        double childTime = (double)segment->childTime / FREQUENCY;
+        double totalTime = (double)segment->totalTime/1e9;
+        double childTime = (double)segment->childTime/1e9;
         double selfTime = totalTime - childTime;
         double absPercent = totalTime / overallTime * 100;
         double relativePercent = totalTime / parentTime * 100;
@@ -79,8 +79,9 @@ static void profiler_reverse_list()
 
 void profiler_segments_print(long flops16, long flops32, long flops64)
 {
-    double overallTime = (double)profile_segment_sentinel.childTime / FREQUENCY;
+    double overallTime = (double)profile_segment_sentinel.childTime / 1e9; // convert from ns to seconds
     
+    // convert from flop/s to Gflop/s
     if (flops16 > 0 || flops32 > 0 || flops64 > 0) {
         if (flops16 > 0) printf("FP16: %.2f Gflop/s ", (double)flops16 / overallTime / 1e9);
         if (flops32 > 0) printf("FP32: %.2f Gflop/s ", (double)flops32 / overallTime / 1e9);

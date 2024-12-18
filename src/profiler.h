@@ -2,6 +2,8 @@
 #define PROFILER_H
 
 #include <stdint.h>
+#include <time.h>
+#define NS_PER_SECOND 1e9
 
 #ifdef NPROFILER
 
@@ -13,10 +15,8 @@
 #define PROFILE_SEGMENT_END()
 #define PROFILE_SEGMENT_FUNCTION_END()
 #define PROFILE_FUNCTION_END() 
-
 #else //NPROFILER
 #include <stdio.h>
-#include "lib/tsc_x86.h"
 
 struct profile_segment
 {
@@ -73,9 +73,11 @@ static inline void profile_segment_start(struct profile_segment *segment)
         segment->next = profile_segment_list;
         profile_segment_list = segment;
     }
-    uint64_t counter = getRDTSCP();
-    segment->totalTime -= counter;
-    profile_segment_current->childTime -= counter;
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &current_time);
+    uint64_t current_ns = current_time.tv_sec*NS_PER_SECOND + current_time.tv_nsec;
+    segment->totalTime -= current_ns;
+    profile_segment_current->childTime -= current_ns;
     segment->parent = profile_segment_current;
     profile_segment_current = segment;
 }
@@ -93,11 +95,13 @@ static inline void profile_segments_start(struct profile_segment *segment0,
         segment1->next = profile_segment_list;
         profile_segment_list = segment1;
     }
-    uint64_t counter = getRDTSCP();
-    segment0->totalTime -= counter;
-    segment1->totalTime -= counter;
-    profile_segment_current->childTime -= counter;
-    segment0->childTime -= counter;
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &current_time);
+    uint64_t current_ns = current_time.tv_sec*NS_PER_SECOND + current_time.tv_nsec;
+    segment0->totalTime -= current_ns;
+    segment1->totalTime -= current_ns;
+    profile_segment_current->childTime -= current_ns;
+    segment0->childTime -= current_ns;
     segment0->parent = profile_segment_current;
     segment1->parent = segment0;
     profile_segment_current = segment1;
@@ -111,9 +115,11 @@ static inline void profile_segments_switch(struct profile_segment *newSegment)
         newSegment->next = profile_segment_list;
         profile_segment_list = newSegment;
     }
-    uint64_t counter = getRDTSCP();
-    oldSegment->totalTime += counter;
-    newSegment->totalTime -= counter;
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &current_time);
+    uint64_t current_ns = current_time.tv_sec*NS_PER_SECOND + current_time.tv_nsec;
+    oldSegment->totalTime += current_ns;
+    newSegment->totalTime -= current_ns;
     newSegment->parent = oldSegment->parent;
     profile_segment_current = newSegment;
 }
@@ -122,21 +128,25 @@ static inline void profile_segment_end()
 {
     struct profile_segment *segment = profile_segment_current;
     profile_segment_current = segment->parent;
-    uint64_t counter = getRDTSCP();
-    segment->totalTime += counter;
-    profile_segment_current->childTime += counter;
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &current_time);
+    uint64_t current_ns = current_time.tv_sec*NS_PER_SECOND + current_time.tv_nsec;
+    segment->totalTime += current_ns;
+    profile_segment_current->childTime += current_ns;
 }
 
 static inline void profile_segments_end()
 {
     struct profile_segment *segment0 = profile_segment_current;
     struct profile_segment *segment1 = segment0->parent;
-    uint64_t counter = getRDTSCP();
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &current_time);
+    uint64_t current_ns = current_time.tv_sec*NS_PER_SECOND + current_time.tv_nsec;
     profile_segment_current = segment1->parent;
-    segment0->totalTime += counter;
-    segment1->totalTime += counter;
-    segment1->childTime += counter;
-    profile_segment_current->childTime += counter;
+    segment0->totalTime += current_ns;
+    segment1->totalTime += current_ns;
+    segment1->childTime += current_ns;
+    profile_segment_current->childTime += current_ns;
 }
 #endif //NPROFILER
        
