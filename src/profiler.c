@@ -21,6 +21,7 @@ void profiler_segments_print(long flops16, long flops32, long flops64)
 struct profile_segment *profile_segment_list;
 struct profile_segment profile_segment_sentinel;
 struct profile_segment *profile_segment_current = &profile_segment_sentinel;
+char json_output[1024];
 
 void profiler_reset()
 {
@@ -35,6 +36,30 @@ void profiler_reset()
     profile_segment_list = NULL;
     profile_segment_sentinel = (struct profile_segment){0};
     profile_segment_current = &profile_segment_sentinel;
+    memset(json_output, 0, sizeof(json_output));
+}
+
+static void profiler_segments_print_children_json(struct profile_segment *parent, int level)
+{
+    for(struct profile_segment *segment = profile_segment_list;
+        segment;
+        segment = segment->next)
+    {
+        if(segment->parent != parent)
+            continue;
+
+        double totalTime = (double)segment->totalTime/1e9;
+        double childTime = (double)segment->childTime/1e9;
+        double selfTime = totalTime - childTime;
+        char buffer[32];
+        // We only care about segments at level 1
+        if (level == 1) {
+            snprintf(buffer, sizeof(buffer), "%s,%lf,", segment->name, selfTime);
+            strcat(json_output, buffer);
+        }
+
+        profiler_segments_print_children_json(segment, level+1);
+    }
 }
 
 static void profiler_segments_print_children(struct profile_segment *parent, double parentTime, int level)
@@ -92,6 +117,18 @@ void profiler_segments_print(long flops16, long flops32, long flops64)
     printf("%-20s %-20s %-9s %-8s %-9s\n", "name", "relative %", "total", "total %", "self");
     profiler_reverse_list();
     profiler_segments_print_children(&profile_segment_sentinel, overallTime, 0);
+}
+
+char* profiler_segments_print_json(long M, long K, long N) {
+
+    char buffer[64];
+    // We only care about segments at level 1
+    snprintf(buffer, sizeof(buffer), "\n%ld,%ld,%ld\n", M, K, N);
+    strcat(json_output, buffer);
+    profiler_reverse_list();
+    profiler_segments_print_children_json(&profile_segment_sentinel, 0);
+
+    return &json_output[0];
 }
 
 extern inline void profile_segment_start(struct profile_segment *segment);
