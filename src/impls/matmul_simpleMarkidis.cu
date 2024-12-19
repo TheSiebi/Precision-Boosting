@@ -417,6 +417,7 @@ flop_counts matmul_simpleMarkidis_double<6>(double *A, double *B, double *C, siz
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
 
+    PRINT_ON_ERROR(cudaFreeHost(C1));
     return {f1.flops16 + f2.flops16, f1.flops32 + f2.flops32, f1.flops64 + f2.flops64};
 }
 
@@ -434,6 +435,7 @@ flop_counts matmul_simpleMarkidis_double<7>(double *A, double *B, double *C, siz
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
 
+    PRINT_ON_ERROR(cudaFreeHost(C1));
     return {f1.flops16 + f2.flops16, f1.flops32 + f2.flops32, f1.flops64 + f2.flops64};
 }
 
@@ -452,6 +454,7 @@ flop_counts matmul_simpleMarkidis_double<8>(double *A, double *B, double *C, siz
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
 
+    PRINT_ON_ERROR(cudaFreeHost(C1));
     return {f1.flops16 + f2.flops16, f1.flops32 + f2.flops32, f1.flops64 + f2.flops64};
 }
 
@@ -519,6 +522,7 @@ flop_counts matmul_simpleMarkidis_double<14>(double *A, double *B, double *C, si
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
 
+    PRINT_ON_ERROR(cudaFreeHost(C1));
     return {f0.flops16 + f1.flops16, f0.flops32 + f1.flops32, f0.flops64 + f1.flops64};
 }
 
