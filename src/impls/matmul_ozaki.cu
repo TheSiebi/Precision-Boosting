@@ -655,6 +655,11 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
     PRINT_ON_ERROR(cudaFree(deviceCMerged));
     PRINT_ON_ERROR(cudaFree(deviceAFull));
     PRINT_ON_ERROR(cudaFree(deviceBFull));
+    if (transpose)
+    {
+        PRINT_ON_ERROR(cudaFree(deviceBTransposed));
+        PRINT_ON_ERROR(cudaFree(deviceBFullTransposed));
+    }
 
 #if 1
     for(int i = 0; i < mergeCount; i++)
