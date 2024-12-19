@@ -39,6 +39,8 @@ flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, size_t M, s
 flop_counts matmul_cuBLAS32(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_cuBLAS64(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
+template <typename T>
+void transposeMatrix(T *A, T *A_T, size_t M, size_t K);
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t max_splits, const bool verbose);
 template<int version>

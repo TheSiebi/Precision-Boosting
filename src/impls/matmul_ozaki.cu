@@ -303,29 +303,6 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
 
 }
 
-// https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/
-#define TRANSPOSE_TILE_DIM 32
-#define TRANSPOSE_BLOCK_ROWS 8
-template<typename T>
-__global__ void transpose(T *oData, T* iData, size_t M, size_t K)
-{
-    __shared__ T tile[TRANSPOSE_TILE_DIM][TRANSPOSE_TILE_DIM];
-
-    size_t x = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.x;
-    size_t y = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.y;
-
-    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
-        tile[threadIdx.y + j][threadIdx.x] = iData[(y + j)*K + x];
-
-    __syncthreads();
-
-    x = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.x;
-    y = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.y;
-
-    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
-        oData[(y + j)*M + x] = tile[threadIdx.x][threadIdx.y + j];
-}
-
 template<int splitCount>
 void ozaki_split_to_float_fixed(double* A, float* ASplit, const size_t M, const size_t N)
 {
@@ -353,6 +330,52 @@ void ozaki_split_to_float_fixed(double* A, float* ASplit, const size_t M, const 
 
     for (size_t ij = 0; ij < M * N; ++ij)
         ASplit[(splitCount-1)*M*N + ij] = (float) A[ij];
+}
+
+// https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/
+#define TRANSPOSE_TILE_DIM 32
+#define TRANSPOSE_BLOCK_ROWS 8
+template<typename T>
+__global__ void transpose_matrix(T *oData, T* iData, size_t M, size_t K)
+{
+    __shared__ T tile[TRANSPOSE_TILE_DIM][TRANSPOSE_TILE_DIM];
+
+    size_t x = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.x;
+    size_t y = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        tile[threadIdx.y + j][threadIdx.x] = iData[(y + j)*K + x];
+
+    __syncthreads();
+
+    x = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        oData[(y + j)*M + x] = tile[threadIdx.x][threadIdx.y + j];
+}
+
+template <typename T>
+void transposeMatrix(T *A, T *A_T, size_t M, size_t K)
+{
+    size_t size = M * K;
+    T *d_A, *d_A_T;
+    PRINT_ON_ERROR(cudaMalloc(&d_A, size * sizeof(T)));
+    PRINT_ON_ERROR(cudaMalloc(&d_A_T, size * sizeof(T)));
+
+    PRINT_ON_ERROR(cudaMemcpy(d_A, A, size * sizeof(T), cudaMemcpyHostToDevice));
+
+    dim3 blockDim(TRANSPOSE_TILE_DIM, TRANSPOSE_BLOCK_ROWS);
+    dim3 gridDim(K / TRANSPOSE_TILE_DIM, M / TRANSPOSE_TILE_DIM);
+
+    transpose_matrix<<<gridDim, blockDim>>>(d_A_T, d_A, M, K);
+    PRINT_ON_ERROR(cudaGetLastError());
+    PRINT_ON_ERROR(cudaDeviceSynchronize());
+
+    PRINT_ON_ERROR(cudaMemcpy(A_T, d_A_T, size * sizeof(T), cudaMemcpyDeviceToHost));
+
+    PRINT_ON_ERROR(cudaFree(d_A));
+    PRINT_ON_ERROR(cudaFree(d_A_T));
 }
 
 template<int splitCount>
@@ -467,7 +490,7 @@ template flop_counts matmul_ozaki<2>(double *a, double *b, double *c, size_t m, 
 
 template<int splitCount, int mergeCount, typename mulInputType>
 flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, size_t K, size_t N,
-                                   std::pair<int, int> mergePattern[mergeCount])
+                                   std::pair<int, int> mergePattern[mergeCount], bool transpose)
 {
     size_t ASizeF = M * K * sizeof(mulInputType);
     size_t ASize = M * K * sizeof(double);
@@ -478,18 +501,22 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
 
     PROFILE_FUNCTION_SEGMENT_START("allocate gpu");
 
-    mulInputType *deviceA, *deviceB;
+    mulInputType *deviceA, *deviceB, *deviceBTransposed;
     float *deviceC;
     double *deviceCMerged;
-    double *deviceAFull, *deviceBFull;
+    double *deviceAFull, *deviceBFull, *deviceBFullTransposed;
 
     PRINT_ON_ERROR(cudaMalloc(&deviceA, ASizeF * splitCount));
     PRINT_ON_ERROR(cudaMalloc(&deviceB, BSizeF * splitCount));
+    if (transpose)
+        PRINT_ON_ERROR(cudaMalloc(&deviceBTransposed, BSizeF * splitCount));
     PRINT_ON_ERROR(cudaMalloc(&deviceC, CSizeF * mergeCount));
     PRINT_ON_ERROR(cudaMalloc(&deviceCMerged, CSize));
 
     PRINT_ON_ERROR(cudaMalloc(&deviceAFull, ASize));
     PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BSize));
+    if (transpose)
+        PRINT_ON_ERROR(cudaMalloc(&deviceBFullTransposed, BSize));
 
     PROFILE_SEGMENTS_SWITCH("memcpy host2device");
 
@@ -502,13 +529,39 @@ flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, si
     {
         const half beta = ceilf((log2f(K) + 11) / 2.f);
         ozaki_split_to_half_fixed_cuda<splitCount><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
-        ozaki_split_to_half_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+
+        if (transpose)
+        {
+            dim3 blockDim(TRANSPOSE_TILE_DIM, TRANSPOSE_BLOCK_ROWS);
+            dim3 gridDim(N / TRANSPOSE_TILE_DIM, K / TRANSPOSE_TILE_DIM);
+            transpose_matrix<<<gridDim, blockDim>>>(deviceBFullTransposed, deviceBFull, K, N);
+            ozaki_split_to_half_fixed_cuda<splitCount><<<N, 32>>>(deviceBFullTransposed, deviceBTransposed, N, K, beta);
+
+            dim3 gridDim1(K / TRANSPOSE_TILE_DIM, N / TRANSPOSE_TILE_DIM);
+            for (int i = 0; i < splitCount; i++)
+                transpose_matrix<<<gridDim1, blockDim>>>(deviceB + i * BSizeF, deviceBTransposed + i * BSizeF, N, K);
+        }
+        else 
+            ozaki_split_to_half_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
     }
     else
     {
         const float beta = ceilf((log2f(K) + 24) / 2.f);
         ozaki_split_to_float_fixed_cuda<splitCount><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
-        ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+        
+        if (transpose)
+        {
+            dim3 blockDim(TRANSPOSE_TILE_DIM, TRANSPOSE_BLOCK_ROWS);
+            dim3 gridDim(N / TRANSPOSE_TILE_DIM, K / TRANSPOSE_TILE_DIM);
+            transpose_matrix<<<gridDim, blockDim>>>(deviceBFullTransposed, deviceBFull, K, N);
+            ozaki_split_to_float_fixed_cuda<splitCount><<<N, 32>>>(deviceBFullTransposed, deviceBTransposed, N, K, beta);
+
+            dim3 gridDim1(K / TRANSPOSE_TILE_DIM, N / TRANSPOSE_TILE_DIM);
+            for (int i = 0; i < splitCount; i++)
+                transpose_matrix<<<gridDim1, blockDim>>>(deviceB + i * BSizeF, deviceBTransposed + i * BSizeF, N, K);
+        }
+        else 
+            ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
     }
     CUDA_DEVICE_SYNCHRONIZE();
 
@@ -630,7 +683,7 @@ flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -642,7 +695,7 @@ flop_counts matmul_ozaki<4>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -655,7 +708,7 @@ flop_counts matmul_ozaki<5>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -668,7 +721,7 @@ flop_counts matmul_ozaki<6>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 
@@ -682,7 +735,7 @@ flop_counts matmul_ozaki<7>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -695,7 +748,7 @@ flop_counts matmul_ozaki<8>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -708,5 +761,5 @@ flop_counts matmul_ozaki<9>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+    return matmul_ozaki_optimized<splitCount, mergeCount, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
