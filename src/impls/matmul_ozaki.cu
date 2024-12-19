@@ -1,14 +1,22 @@
 #include "ozaki.h"
 #include <cstdint>
 #include <cstdio>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
 
 #include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "../cuda_utils.h"
 #include "../timer.h"
 #include "../profiler.h"
+#include "split_merge_cuda.h"
+#include "matmul_cuda.h"
 
 #include "../matmul.h"
 
@@ -19,6 +27,10 @@
 size_t ix(size_t row, size_t col, size_t rows, size_t cols)
 {
     return col + row * cols;
+}
+
+static bool compareByDescendingSum(const std::pair<int, int>& a, const std::pair<int, int>& b) {
+    return (a.first + a.second) > (b.first + b.second);
 }
 
 // Turns a [rows, cols] matrix into a [cols, rows] matrix
@@ -216,7 +228,6 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
 
 }
 
-
 /**
  * Implementation of Algorithm 4 in Ozaki paper.
  * Returns an unevaluated sum as a vector of matrices stored as vectors.
@@ -230,7 +241,7 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
 
     if constexpr (version == 0 || version == 1)
     {
-        PROFILE_FUNCTION_SEGMENT_START("split");
+        PROFILE_SEGMENT_START("split");
         // D = Split_Mat(A, inf, delta); nA = length(D);
         auto D = ozaki_split_to_float(m, n, a, MAX_SPLITS);
         const auto nA = D.size();
@@ -242,12 +253,12 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
         auto E = ozaki_split_to_float(n, p, b, MAX_SPLITS);
         const auto nB = E.size();
         *nB_ptr = (int) nB;
-        PROFILE_SEGMENT_FUNCTION_END();
 
         // for r = 1 : nB, E{r} = E{r}T ; end
         // again, why transpose?
         // for (auto& matrix: E)
         //     transpose(p, n, matrix.data());
+        PROFILE_SEGMENTS_SWITCH("matmul");
 
         int t = 0;
         std::vector<std::vector<float>> C(nA * nB, std::vector<float>(m * p));
@@ -263,7 +274,7 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
                     throw std::runtime_error(std::string("unimplemented ozaki version " + version));
             }
         }
-
+        PROFILE_SEGMENT_END();
         return C;
     }
 
@@ -287,16 +298,143 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
 
         return C;
     }
-
     else
         throw std::runtime_error(std::string("unimplemented ozaki version " + version));
 
 }
 
+// https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/
+#define TRANSPOSE_TILE_DIM 32
+#define TRANSPOSE_BLOCK_ROWS 8
+template<typename T>
+__global__ void transpose(T *oData, T* iData, size_t M, size_t K)
+{
+    __shared__ T tile[TRANSPOSE_TILE_DIM][TRANSPOSE_TILE_DIM];
+
+    size_t x = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.x;
+    size_t y = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        tile[threadIdx.y + j][threadIdx.x] = iData[(y + j)*K + x];
+
+    __syncthreads();
+
+    x = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        oData[(y + j)*M + x] = tile[threadIdx.x][threadIdx.y + j];
+}
+
+template<int splitCount>
+void ozaki_split_to_float_fixed(double* A, float* ASplit, const size_t M, const size_t N)
+{
+    // beta = fl(...)
+    const float beta = ceilf((log2f(N) + 24) / 2.f);
+
+    for(int k = 0; k < splitCount-1; k++)
+    {
+        for(size_t i = 0; i < M; i++)
+        {
+            double mu = 0;
+            for(size_t j = 0; j < N; j++)
+                mu = std::max(mu, std::abs(A[i*N+j]));
+            float w = exp2f(ceilf(log2f(mu)) + beta);
+
+            for(size_t j = 0; j < N; j++)
+            {
+                size_t ij = i*N+j;
+                float value = (float)(A[ij] + (double)w) - w;
+                ASplit[k*M*N + ij] = value;
+                A[ij] -= (double)value;
+            }
+        }
+    }
+
+    for (size_t ij = 0; ij < M * N; ++ij)
+        ASplit[(splitCount-1)*M*N + ij] = (float) A[ij];
+}
+
+template<int splitCount>
+static __global__
+void ozaki_split_to_half_fixed_cuda(double* A, half* ASplit, const size_t M, const size_t N, const half beta)
+{
+    const int warpIndex = threadIdx.x;
+    const int scalar_AOffset = blockIdx.x * N;
+
+    double mu = 0;
+    for(size_t j = 0; j < N; j+=WARP_SIZE)
+        mu = max(mu, abs(A[scalar_AOffset+j+warpIndex]));
+
+    for(int k = 0; k < splitCount-1; k++)
+    {
+        //get max mu accross all warps
+        for(int i = 16; i >= 1; i/=2)
+            mu = max(mu, __shfl_xor_sync(0xffffffff, mu, i, 32));
+        half w = hexp2(hceil(hlog2((half)mu)) + beta);
+
+        mu = 0;
+        for(size_t j = 0; j < N; j+=WARP_SIZE)
+        {
+            size_t ij = scalar_AOffset+j+warpIndex;
+            half value = (half)(A[ij] + (double)w) - w;
+            ASplit[k*M*N + ij] = value;
+            double newA = A[ij] - (double)value;
+            A[ij] = newA;
+            mu = max(mu, abs(newA));
+        }
+    }
+
+    for (size_t j = 0; j < N; j+=WARP_SIZE)
+    {
+        size_t ij = scalar_AOffset+j+warpIndex;
+        ASplit[(splitCount-1)*M*N + ij] = (half) A[ij];
+    }
+}
+
+template<int splitCount>
+static __global__
+void ozaki_split_to_float_fixed_cuda(double* A, float* ASplit, const size_t M, const size_t N, const float beta)
+{
+    const int warpIndex = threadIdx.x;
+    const int scalar_AOffset = blockIdx.x * N;
+
+    double mu = 0;
+    for(size_t j = 0; j < N; j+=WARP_SIZE)
+        mu = max(mu, abs(A[scalar_AOffset+j+warpIndex]));
+
+    for(int k = 0; k < splitCount-1; k++)
+    {
+        //get max mu accross all warps
+        for(int i = 16; i >= 1; i/=2)
+            mu = max(mu, __shfl_xor_sync(0xffffffff, mu, i, 32));
+        float w = exp2f(ceilf(log2f(mu)) + beta);
+
+        mu = 0;
+        for(size_t j = 0; j < N; j+=WARP_SIZE)
+        {
+            size_t ij = scalar_AOffset+j+warpIndex;
+            float value = (float)(A[ij] + (double)w) - w;
+            ASplit[k*M*N + ij] = value;
+            double newA = A[ij] - (double)value;
+            A[ij] = newA;
+            mu = max(mu, abs(newA));
+        }
+    }
+
+    for (size_t j = 0; j < N; j+=WARP_SIZE)
+    {
+        size_t ij = scalar_AOffset+j+warpIndex;
+        ASplit[(splitCount-1)*M*N + ij] = (float) A[ij];
+    }
+}
+
+
 // Ozaki paper uses A [m, n] and B [n, p] matrices
 template<int version>
 flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, size_t p)
 {
+    PROFILE_FUNCTION_START();
     // Ozaki splitting modifies input matrices. Therefore, copies must be made.
     std::vector<double> a_copy(a, a + m * n);
     std::vector<double> b_copy(b, b + n * p);
@@ -304,18 +442,16 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
     // Splitting configuration (nA, nB) influences flop-count, and must be retrieved.
     int64_t nA, nB;
 
-    PROFILE_FUNCTION_START();
     const auto unevaluated_sum = ozaki_mul<version>(m, n, p, a_copy.data(), b_copy.data(), &nA, &nB);
     // std::cout << "nA: " << nA << "/" << MAX_SPLITS << ", ";
     // std::cout << "nB: " << nB << "/" << MAX_SPLITS << "\n";
-    PROFILE_FUNCTION_SEGMENT_START("accumulate");
+    PROFILE_SEGMENT_START("accumulate");
     memset(c, 0, m * p * sizeof(double));
     for (const auto& matrix: unevaluated_sum)
         for (size_t ij = 0; ij < m * p; ++ij)
             c[ij] += matrix[ij];
+    
     PROFILE_SEGMENT_FUNCTION_END();
-
-    PROFILE_FUNCTION_END();
 
     flop_counts counts =
     {
@@ -325,7 +461,252 @@ flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, si
     };
     return counts;
 }
-
 template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 template flop_counts matmul_ozaki<2>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
+
+template<int splitCount, int mergeCount, typename mulInputType>
+flop_counts matmul_ozaki_optimized(double *A, double *B, double *C, size_t M, size_t K, size_t N,
+                                   std::pair<int, int> mergePattern[mergeCount])
+{
+    size_t ASizeF = M * K * sizeof(mulInputType);
+    size_t ASize = M * K * sizeof(double);
+    size_t BSizeF = K * N * sizeof(mulInputType);
+    size_t BSize = K * N * sizeof(double);
+    size_t CSizeF = M * N * sizeof(float);
+    size_t CSize = M * N * sizeof(double);
+
+    PROFILE_FUNCTION_SEGMENT_START("allocate gpu");
+
+    mulInputType *deviceA, *deviceB;
+    float *deviceC;
+    double *deviceCMerged;
+    double *deviceAFull, *deviceBFull;
+
+    PRINT_ON_ERROR(cudaMalloc(&deviceA, ASizeF * splitCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceB, BSizeF * splitCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceC, CSizeF * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&deviceCMerged, CSize));
+
+    PRINT_ON_ERROR(cudaMalloc(&deviceAFull, ASize));
+    PRINT_ON_ERROR(cudaMalloc(&deviceBFull, BSize));
+
+    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
+
+    PRINT_ON_ERROR(cudaMemcpy(deviceAFull, A, ASize, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
+    CUDA_DEVICE_SYNCHRONIZE();
+
+    PROFILE_SEGMENTS_SWITCH("split");
+    if constexpr(std::is_same<half, mulInputType>::value)
+    {
+        const half beta = ceilf((log2f(K) + 11) / 2.f);
+        ozaki_split_to_half_fixed_cuda<splitCount><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
+        ozaki_split_to_half_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+    }
+    else
+    {
+        const float beta = ceilf((log2f(K) + 24) / 2.f);
+        ozaki_split_to_float_fixed_cuda<splitCount><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
+        ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+    }
+    CUDA_DEVICE_SYNCHRONIZE();
+
+    PROFILE_SEGMENTS_SWITCH("matmul");
+
+#if 1
+    cudaStream_t streams[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
+    for(int i = 0; i < mergeCount; i++)
+    {
+        size_t aIndex = mergePattern[i].first * M * K;
+        size_t bIndex = mergePattern[i].second * K * N;
+        size_t cIndex = i * M * N;
+        matmulCUDACoresStream<mulInputType, float, float, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
+    }
+#else
+    cublasHandle_t handle;
+    cublasStatus_t status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("CUBLAS initialization failed. %s: %s\n",
+                cublasGetStatusName(status), cublasGetStatusString(status));
+        flop_counts counts = {0L, 0L, 0L};
+        return counts;
+    }
+    const float cublas_alpha = 1.0f;
+    const float cublas_beta = 0.0f;
+#if 0
+    for(int i = 0; i < mergeCount; i++)
+    {
+        size_t aIndex = mergePattern[i].first * M * K;
+        size_t bIndex = mergePattern[i].second * K * N;
+        size_t cIndex = i * M * N;
+        status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                             N, M, K,
+                             &cublas_alpha,
+                             &deviceB[bIndex], N,
+                             &deviceA[aIndex], K,
+                             &cublas_beta,
+                             &deviceC[cIndex], N);
+    }
+#else
+    float *APointers[mergeCount];
+    float *BPointers[mergeCount];
+    float *CPointers[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+    {
+        size_t aIndex = mergePattern[i].first * M * K;
+        size_t bIndex = mergePattern[i].second * K * N;
+        size_t cIndex = i * M * N;
+        APointers[i] = &deviceA[aIndex];
+        BPointers[i] = &deviceB[bIndex];
+        CPointers[i] = &deviceC[cIndex];
+    }
+    float **device_APointers, **device_BPointers, **device_CPointers;
+    PRINT_ON_ERROR(cudaMalloc(&device_APointers, sizeof(float*) * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&device_BPointers, sizeof(float*) * mergeCount));
+    PRINT_ON_ERROR(cudaMalloc(&device_CPointers, sizeof(float*) * mergeCount));
+
+    PRINT_ON_ERROR(cudaMemcpy(device_APointers, APointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(device_BPointers, BPointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+    PRINT_ON_ERROR(cudaMemcpy(device_CPointers, CPointers, sizeof(float*) * mergeCount, cudaMemcpyHostToDevice));
+
+    status = cublasSgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                N, M, K,
+                                &cublas_alpha,
+                                device_BPointers, N,
+                                device_APointers, K,
+                                &cublas_beta,
+                                device_CPointers, N,
+                                mergeCount);
+
+#endif
+#endif
+
+    CUDA_DEVICE_SYNCHRONIZE();
+
+    PROFILE_SEGMENTS_SWITCH("merge");
+    merge_n_cuda<mergeCount, float, double><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
+    PRINT_ON_ERROR(cudaGetLastError());
+    CUDA_DEVICE_SYNCHRONIZE();
+
+    PROFILE_SEGMENTS_SWITCH("memcpy device2host");
+    PRINT_ON_ERROR(cudaMemcpy(C, deviceCMerged, CSize, cudaMemcpyDeviceToHost));
+
+    PROFILE_SEGMENTS_SWITCH("free");
+
+    PRINT_ON_ERROR(cudaFree(deviceA));
+    PRINT_ON_ERROR(cudaFree(deviceB));
+    PRINT_ON_ERROR(cudaFree(deviceC));
+    PRINT_ON_ERROR(cudaFree(deviceCMerged));
+    PRINT_ON_ERROR(cudaFree(deviceAFull));
+    PRINT_ON_ERROR(cudaFree(deviceBFull));
+
+#if 1
+    for(int i = 0; i < mergeCount; i++)
+        PRINT_ON_ERROR(cudaStreamDestroy(streams[i]));
+#endif
+
+    PROFILE_SEGMENT_FUNCTION_END();
+
+    int64_t nA = splitCount;
+    int64_t nB = splitCount;
+    flop_counts counts =
+    {
+        0L,
+        8L + (4L*M+3L*M*K)*nA + (4L*K+3L*K*N)*nB + 2L*nA*nB*M*K*N,
+        (2L*M*K+M)*nA + (2L*K*N+K)*nB + M*N*nA*nB
+    };
+    return counts;
+}
+
+template<>
+flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_ozaki<4>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, merges);
+}
+
+template<>
+flop_counts matmul_ozaki<5>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 6;
+    constexpr int mergeCount = 36;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+template<>
+flop_counts matmul_ozaki<6>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = 10;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+
+template<>
+flop_counts matmul_ozaki<7>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = 20;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+template<>
+flop_counts matmul_ozaki<8>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 6;
+    constexpr int mergeCount = 25;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}
+
+template<>
+flop_counts matmul_ozaki<9>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 6;
+    constexpr int mergeCount = 36;
+    constexpr int splitCountSq = splitCount * splitCount;
+    std::pair<int, int> merges[splitCountSq];
+    for(int i = 0; i < splitCountSq; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount]);
+}

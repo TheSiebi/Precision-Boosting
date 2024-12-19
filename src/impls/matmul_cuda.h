@@ -66,6 +66,9 @@ template<typename InputType, typename OutputType, int version>
 void matmulTensorCores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N);
 
 template<typename InputType, typename MulType, typename OutputType, int version>
+void matmulCUDACoresStream(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N, cudaStream_t stream);
+
+template<typename InputType, typename MulType, typename OutputType, int version>
 void matmulCUDACores(InputType *A, InputType *B, OutputType *C, size_t M, size_t K, size_t N);
 
 template<typename InputType, typename MulType, typename OutputType>
