@@ -363,7 +363,7 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
         input_folder: Name of input folder at timings
         plot_filename: Plot will be saved as plot_filename_profile.png
     """
-    plot_setup(ylabel='[s]')
+    plot_setup(ylabel='Fraction of total runtime')
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
 
     # Get profile data
@@ -372,10 +372,11 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
     sizes = [run['N'] for run in runs] # Only use square matrices for now
     profile_data = [parse_profile_text(run['profile_output']) for run in runs]
 
-    # Divide all values by sample count to get average time per sample
+    # Normalize profile data to values between 0 and 1
     for i in range(len(profile_data)):
+        max_value = max(profile_data[i].values())
         for key in profile_data[i].keys():
-            profile_data[i][key] /= sample_counts[i]
+            profile_data[i][key] /= max_value
 
     # Plot segment runtimes
     for key in profile_data[0].keys():
