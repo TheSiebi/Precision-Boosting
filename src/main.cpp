@@ -234,6 +234,12 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = false,
     },
     {
+        .function = matmul_ozaki<9>,
+        .name = "Matmul Ozaki v9",
+        .description = "Ozaki FP64 using FP16 6 splits and 25 matmuls",
+        .highestPerforming = false,
+    },
+    {
         .function = matmul_Ootomo_double_v0,
         .name = "Ootomo double v0",
         .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",
