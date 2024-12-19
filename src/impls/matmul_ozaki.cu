@@ -303,6 +303,29 @@ std::vector<std::vector<float>> ozaki_mul(const size_t m, const size_t n, const 
 
 }
 
+// https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/
+#define TRANSPOSE_TILE_DIM 32
+#define TRANSPOSE_BLOCK_ROWS 8
+template<typename T>
+__global__ void transpose(T *oData, T* iData, size_t M, size_t K)
+{
+    __shared__ T tile[TRANSPOSE_TILE_DIM][TRANSPOSE_TILE_DIM];
+
+    size_t x = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.x;
+    size_t y = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        tile[threadIdx.y + j][threadIdx.x] = iData[(y + j)*K + x];
+
+    __syncthreads();
+
+    x = blockIdx.y * TRANSPOSE_TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TRANSPOSE_TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TRANSPOSE_TILE_DIM; j += TRANSPOSE_BLOCK_ROWS)
+        oData[(y + j)*M + x] = tile[threadIdx.x][threadIdx.y + j];
+}
+
 template<int splitCount>
 void ozaki_split_to_float_fixed(double* A, float* ASplit, const size_t M, const size_t N)
 {
