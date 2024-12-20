@@ -1185,7 +1185,9 @@ template void matmulTensorCores<half, float, 3>(half*, half*, float*, size_t, si
 template void matmulTensorCores<half, float, 4>(half*, half*, float*, size_t, size_t, size_t);
 template void matmulTensorCores<half, half, 4>(half*, half*, half*, size_t, size_t, size_t);
 template void matmulTensorCores<half, float, 5>(half*, half*, float*, size_t, size_t, size_t);
+#if SM_VERSION >= 800
 template void matmulTensorCores<half, float, 6>(half*, half*, float*, size_t, size_t, size_t);
+#endif
 
 //blockDim.x == warpSize
 //blockDim.y == BlockSizeN / (WarpSizeN * FragSizeN)

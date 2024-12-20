@@ -77,12 +77,14 @@ matmul_variant<float> matmulVariants32[] =
         .description = "Simple markidis with shared memory, vectorized loads, accumulation outside tensor cores and split scaling",
         .highestPerforming = true,
     },
+#if SM_VERSION >= 800
     {
         .function = matmul_simpleMarkidis<6, 1, true>,
         .name = "Simple Markidis v6",
         .description = "Simple markidis with shared memory, vectorized loads, double buffering, accumulation outside tensor cores and split scaling",
         .highestPerforming = true,
     },
+#endif
     {
         .function = matmul_markidis,
         .name = "Markidis",
