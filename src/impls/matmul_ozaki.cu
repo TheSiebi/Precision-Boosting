@@ -378,6 +378,8 @@ void transposeMatrix(T *A, T *A_T, size_t M, size_t K)
     PRINT_ON_ERROR(cudaFree(d_A_T));
 }
 
+template void transposeMatrix<float>(float *, float *, size_t, size_t); 
+
 template<int splitCount>
 static __global__
 void ozaki_split_to_half_fixed_cuda(double* A, half* ASplit, const size_t M, const size_t N, const half beta)

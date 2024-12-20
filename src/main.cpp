@@ -595,6 +595,40 @@ void profile(matmul_variant<T> variant, int warmup, int iterations, size_t M, si
     free(C);
 }
 
+void testTranspose()
+{
+    const int width = 1024;
+    const int height = 2048;
+    const int size = width * height;
+
+    float *A, *A_T, *A_TT;
+
+    // Allocate pinned host memory
+    PRINT_ON_ERROR(cudaMallocHost(&A, size * sizeof(float)));
+    PRINT_ON_ERROR(cudaMallocHost(&A_T, size * sizeof(float)));
+    PRINT_ON_ERROR(cudaMallocHost(&A_TT, size * sizeof(float)));
+
+    // Initialize input matrix
+    for (int i = 0; i < height; ++i) {
+        for (int j = 0; j < width; ++j) {
+            A[i * width + j] = static_cast<float>(i * width + j);
+        }
+    }
+
+    transposeMatrix(A, A_T, height, width);
+    transposeMatrix(A_T, A_TT, width, height);
+
+    for (int i = 0; i < size; i++)
+    {
+        if (A[i] != A_TT[i])
+            printf("Error transposing");
+    }
+
+    PRINT_ON_ERROR(cudaFreeHost(A));
+    PRINT_ON_ERROR(cudaFreeHost(A_T));
+    PRINT_ON_ERROR(cudaFreeHost(A_TT));
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2)
