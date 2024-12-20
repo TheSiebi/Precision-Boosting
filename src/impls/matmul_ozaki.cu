@@ -62,7 +62,7 @@ void matmul_triple_loop(const size_t m, const size_t k, const size_t n, const T*
     }
 }
 
-std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t n, double* a, const int l)
+std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_t n, double* a, const int l)
 {
     // q = size(A, 2);
     // This simply means q := n
@@ -73,11 +73,11 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
     int k = 1;
 
     // beta = fl(...)
-    const double log2u = -11.f; // half precision
-    const double beta = ceil((-log2u + log2(q)) / 2.0);
+    const float log2u = -11.f; // half precision
+    const float beta = ceilf((-log2u + log2f(q)) / 2.0);
 
     // D{1} = zeros(size(A));
-    std::vector<std::vector<half>> D = { std::vector<half>(m * n, __float2half(0.f)) };
+    std::vector<std::vector<__half>> D = { std::vector<__half>(m * n, static_cast<__half>(0.f)) };
 
     // while(k < l)
     while (k < l)
@@ -99,28 +99,34 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
         }
 
         // w = fl(...);
-        std::vector<double> w(m);
+        std::vector<__half> w(m);
         for (size_t i = 0; i < m; ++i)
-            w[i] = exp2(ceil(log2(mu[i])) + beta);
+            w[i] = static_cast<__half>(exp2f(ceilf(log2f(static_cast<float>(mu[i]))) + beta));
 
         // S = repmat(w, 1, q);
-        std::vector<double> S(m * n);
-        for (size_t i = 0; i < m; ++i)
-            for (size_t j = 0; j < n; ++j)
-                S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
+        // We'll just read from w instead
+        // std::vector<__half> S(m * n);
+        // for (size_t i = 0; i < m; ++i)
+        //     for (size_t j = 0; j < n; ++j)
+        //         S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
 
         // D{k} = fl((A + S) - S);
         // A = fl(A - D{k});
-        D.resize(k, std::vector<half>(m * n));
-        for (size_t ij = 0; ij < m * n; ++ij)
+        D.resize(k, std::vector<__half>(m * n));
+        for (size_t i = 0; i < m; ++i)
         {
-            // Note: unclear from paper whether ((A+S)-S) computation should happen as double or half
-            double intermediate = a[ij] + S[ij];
-            asm volatile("" : : "r,m"(intermediate) : "memory"); // avoid compiler optimizations
-            intermediate -= S[ij];
-            D[k - 1][ij] = __float2half((float) intermediate);
-            a[ij] -= __half2float(D[k - 1][ij]);
+            for (size_t j = 0; j < n; ++j)
+            {
+                const size_t ij = ix(i, j, m, n);
+                const __half value = __hsub(
+                    static_cast<__half>(a[ij] + static_cast<double>(w[i])),
+                    w[i]
+                );
+                D[k - 1][ij] = value;
+                a[ij] -= static_cast<double>(value);
+            }
         }
+
 
         // % Checking sparsity of D{k}
         // Omitted
@@ -135,9 +141,9 @@ std::vector<std::vector<half>> ozaki_split_to_half(const size_t m, const size_t 
         // Happens if early termination criterion was not met.
         // D{k} = A;
         // printf("Early termination not reached for k = %zu = l, D.size() = %zu\n", k, D.size());
-        D.resize(k, std::vector<half>(m * n));
+        D.resize(k, std::vector<__half>(m * n));
         for (size_t ij = 0; ij < m * n; ++ij)
-            D[k - 1][ij] = __float2half((float) a[ij]); // Downcasting? Paper just says D{k} = A
+            D[k - 1][ij] = static_cast<__half>(a[ij]); // Downcasting? Paper just says D{k} = A
     }
 
     return D;
