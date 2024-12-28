@@ -118,10 +118,9 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
             for (size_t j = 0; j < n; ++j)
             {
                 const size_t ij = ix(i, j, m, n);
-                const __half value = __hsub(
-                    static_cast<__half>(a[ij] + static_cast<double>(w[i])),
-                    w[i]
-                );
+                volatile double intermediate1 = a[ij] + static_cast<double>(w[i]);
+                volatile double intermediate2 = intermediate1 - static_cast<double>(w[i]);
+                const __half value = static_cast<__half>(intermediate2);
                 D[k - 1][ij] = value;
                 a[ij] -= static_cast<double>(value);
             }
