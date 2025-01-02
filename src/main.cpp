@@ -652,7 +652,9 @@ int main(int argc, char *argv[])
             rng.state = seed;
             testSplitCorrectness(&splitVariants[i], &rng);
         }
-        test_ozaki_split_correctness(&rng, 0.0002, 10, false);
+
+        // Set epsilon to e.g. 1e-9 to see some bits
+        test_ozaki_split_correctness(&rng, 1e-9, 10, false);
         
         //profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
         //profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
