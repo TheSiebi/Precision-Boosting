@@ -931,7 +931,7 @@ void matmulCUDACoresStream(InputType *A, InputType *B, OutputType *C, size_t M, 
         }
     }
 }
-
+template void matmulCUDACoresStream<half, half, half, 1>(half*, half*, half*, size_t, size_t, size_t, cudaStream_t);
 template void matmulCUDACoresStream<half, float, float, 0>(half*, half*, float*, size_t, size_t, size_t, cudaStream_t);
 template void matmulCUDACoresStream<half, float, float, 1>(half*, half*, float*, size_t, size_t, size_t, cudaStream_t);
 template void matmulCUDACoresStream<half, float, double, 1>(half*, half*, double*, size_t, size_t, size_t, cudaStream_t);

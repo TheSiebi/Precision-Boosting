@@ -168,7 +168,25 @@ matmul_variant<float> matmulVariants32[] =
         .name = "matmul_cuBLAS 32",
         .description = "cuBLAS",
         .highestPerforming = true,
-    }
+    },
+    {
+        .function = matmul_ozaki_float<0>,
+        .name = "Matmul Ozaki float v0",
+        .description = "Ozaki FP32 using FP16.",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki_float<1>,
+        .name = "Matmul Ozaki float v1",
+        .description = "Ozaki FP32 using FP16.",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki_float<2>,
+        .name = "Matmul Ozaki float v2",
+        .description = "Ozaki FP32 using FP16.",
+        .highestPerforming = false,
+    },
 };
 
 matmul_variant<double> matmulVariants64[] =
@@ -654,7 +672,7 @@ int main(int argc, char *argv[])
         }
 
         // Set epsilon to e.g. 1e-9 to see some bits
-        test_ozaki_split_correctness(&rng, 1e-9, 10, false);
+        //test_ozaki_split_correctness(&rng, 1e-9, 10, false);
         
         //profile(matmulVariants64[0], 0, 1, 8192, 8192, 8192);
         //profile(matmulVariants64[1], 0, 1, 8192, 8192, 8192);
