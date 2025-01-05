@@ -2,37 +2,95 @@
 
 template<class T>
 double frobenius_norm(T *A, int n) {
-    double sqr_sum = 0.0;
+    __float80 sqr_sum = 0.0;
     for(int i = 0; i < n; i++) {
-        double a_i = (double) A[i];
+        __float80 a_i = (__float80) A[i];
         sqr_sum += a_i * a_i;
     }
-    double result = sqrt(sqr_sum);
-    return result;
+    return (double) sqrt(sqr_sum);
 }
 
 template<class T>
 double abs_residual(T *result, T *reference, int n) {
-    double sqr_sum_err = 0.0;
+    __float80 sqr_sum_err = 0.0;
     for(int i = 0; i < n; i++) {
-        double ref = (double) reference[i];
-        double err = ref - ((double) result[i]);
+        __float80 ref = (__float80) reference[i];
+        __float80 err = ref - ((__float80) result[i]);
         sqr_sum_err += err * err;
     }
-    return sqrt(sqr_sum_err);
+    return (double) sqrt(sqr_sum_err);
 }
 
 template<class T>
 double rel_residual(T *result, T *reference, int n) {
-    double sqr_sum_err = 0.0;
-    double sqr_sum_ref = 0.0;
+    __float80 sqr_sum_err = 0.0;
+    __float80 sqr_sum_ref = 0.0;
     for(int i = 0; i < n; i++) {
-        double ref = (double) reference[i];
-        double err = ref - ((double) result[i]);
+        __float80 ref = (__float80) reference[i];
+        __float80 err = ref - ((__float80) result[i]);
         sqr_sum_err += err * err;
         sqr_sum_ref += ref * ref;
     }
-    return sqrt(sqr_sum_err / sqr_sum_ref);
+    return (double) (sqrt(sqr_sum_err / sqr_sum_ref));
+}
+
+template<class T>
+double rel_residual_l1(T *result, T *reference, int n) {
+    __float80 abs_sum_err = 0.0;
+    __float80 abs_sum_ref = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 err = ref - ((__float80) result[i]);
+        abs_sum_err += abs(err);
+        abs_sum_ref += abs(ref);
+    }
+    return (double) (abs_sum_err / abs_sum_ref);
+}
+
+template<class T>
+double mre_residual(T *result, T *reference, int n) {
+    __float80 sum_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 abs_err = abs(ref - ((__float80) result[i]));
+        __float80 rel_err = abs_err / abs(ref);
+        sum_err += rel_err;
+    }
+    return (double) (sum_err / ((__float80) n));
+}
+
+template<class T>
+double mse_residual(T *result, T *reference, int n) {
+    __float80 sum_sqr_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 abs_err = abs(ref - ((__float80) result[i]));
+        sum_sqr_err += abs_err * abs_err;
+    }
+    return (double) (sum_sqr_err / ((__float80) n));
+}
+
+template<class T>
+double rmse_residual(T *result, T *reference, int n) {
+    __float80 sum_sqr_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 abs_err = abs(ref - ((__float80) result[i]));
+        sum_sqr_err += abs_err * abs_err;
+    }
+    return (double) sqrt(sum_sqr_err / ((__float80) n));
+}
+
+template<class T>
+double rmsre_residual(T *result, T *reference, int n) {
+    __float80 sum_sqr_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 abs_err = abs(ref - ((__float80) result[i]));
+        __float80 rel_err = abs_err / abs(ref);
+        sum_sqr_err += rel_err * rel_err;
+    }
+    return (double) sqrt(sum_sqr_err / ((__float80) n));
 }
 
 template double frobenius_norm<float>(float *result, int n);
@@ -41,6 +99,16 @@ template double abs_residual<float>(float *result, float *reference, int n);
 template double abs_residual<double>(double *result, double *reference, int n);
 template double rel_residual<float>(float *result, float *reference, int n);
 template double rel_residual<double>(double *result, double *reference, int n);
+template double rel_residual_l1<float>(float *result, float *reference, int n);
+template double rel_residual_l1<double>(double *result, double *reference, int n);
+template double mre_residual<float>(float *result, float *reference, int n);
+template double mre_residual<double>(double *result, double *reference, int n);
+template double mse_residual<float>(float *result, float *reference, int n);
+template double mse_residual<double>(double *result, double *reference, int n);
+template double rmse_residual<float>(float *result, float *reference, int n);
+template double rmse_residual<double>(double *result, double *reference, int n);
+template double rmsre_residual<float>(float *result, float *reference, int n);
+template double rmsre_residual<double>(double *result, double *reference, int n);
 
 /// Returns the index of an element with error that is too great. If none is found, returns -1
 template<class T>

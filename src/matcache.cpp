@@ -62,6 +62,62 @@ const std::string typeToSchema(int input_type) {
     }
 }
 
+template<class T>
+bool fillMatrices(T* A, T* B, T* C, size_t M, size_t K, size_t N, int input_type, int index, struct LCG *rng) {
+    const std::string schema = typeToSchema(input_type);
+    if (schema == "unknown") {
+        perror("MatCache: Unknown input type!");
+        return false;
+    }
+
+    std::string precision = std::is_same<T, float>::value ? "float" : "double";
+    std::string filenameA = generateFilename(M, K, N, 'A', schema, precision, index);
+    std::string filenameB = generateFilename(M, K, N, 'B', schema, precision, index);
+    std::string filenameC = generateFilename(M, K, N, 'C', schema, precision, index);
+
+    bool existsA = fileExists(filenameA);
+    bool existsB = fileExists(filenameB);
+    bool existsC = fileExists(filenameC);
+    
+    if (existsA && existsB && existsC) {
+        // All matrices exist; load them
+        FILE* fileA = fopen(filenameA.c_str(), "rb");
+        FILE* fileB = fopen(filenameB.c_str(), "rb");
+        FILE* fileC = fopen(filenameC.c_str(), "rb");
+
+        size_t nrElementsA = fread(A, sizeof(T), M * K, fileA);
+        size_t nrElementsB = fread(B, sizeof(T), K * N, fileB);
+        size_t nrElementsC = fread(C, sizeof(T), M * N, fileC);
+
+        fclose(fileA);
+        fclose(fileB);
+        fclose(fileC);
+
+        if (nrElementsA == M * K && nrElementsB == K * N && nrElementsC == M * N) {
+            return true;
+        } else {
+            perror("MatCache: Failed to read matrices, regenerating them");
+        }
+    }
+
+    if (existsA || existsB || existsC) {
+        // Partial matrices exist; log an error
+        perror("MatCache: Only some of the matrices exist. This should not happen.\n");
+        return false;
+    }
+
+    // None of the matrices exist; generate them
+    fill_matrices(rng, input_type, A, B, M*K, K*N);
+    referenceMatmul_full<T>(A, B, C, M, K, N);
+
+    // Store the matrices
+    storeMatrix(A, M, K, N, 'A', schema, index);
+    storeMatrix(B, M, K, N, 'B', schema, index);
+    storeMatrix(C, M, K, N, 'C', schema, index);
+
+    return true;
+}
+
 // Loads matrices if they exist, else computes and stores them
 template<class T>
 std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type, int index, struct LCG *rng) {
@@ -141,6 +197,8 @@ std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type,
     return getMatrices<T>(M, K, N, input_type, index, rng);
 }
 
-
 template std::tuple<float*, float*, float*> getMatrices<float>(size_t, size_t, size_t, int, int, struct LCG*);
 template std::tuple<double*, double*, double*> getMatrices<double>(size_t, size_t, size_t, int, int, struct LCG*);
+
+template bool fillMatrices<float>(float*, float*, float*, size_t, size_t, size_t, int, int, struct LCG*);
+template bool fillMatrices<double>(double*, double*, double*, size_t, size_t, size_t, int, int, struct LCG*);

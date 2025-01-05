@@ -184,31 +184,35 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
     // B is k*n (k rows, n columns)
     // C is m*n (m rows, n columns)
     T *A, *B, *C, *C_ref;
+    PRINT_ON_ERROR(cudaMallocHost(&A, M * K * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&B, K * N * sizeof(T)));
     PRINT_ON_ERROR(cudaMallocHost(&C, M * N * sizeof(T)));
+    PRINT_ON_ERROR(cudaMallocHost(&C_ref, M * N * sizeof(T)));
 
     for(int i = 0; i < iterations; i++) {
         printf("\r\tType %d Precision Measurement Iteration %d/%d | Matrix Sizes: M=%zd, K=%zd, N=%zd", input_type, i + 1, iterations, M, K, N);
         fflush(stdout);
 
         // Fill matrices A and B according to input type
-        //fill_matrices<T>(&rng, input_type, A, B, M*K, K*N);
-        auto [A, B, C_ref] = getMatrices<T>(M, K, N, input_type, i, &rng);
+        bool succ = fillMatrices<T>(A, B, C_ref, M, K, N, input_type, i, &rng);
+        if (!succ) {
+            printf("Warning: fillMatrices failed!\n");
+            continue;
+        }
 
         // Run matmul implementation
         func(A, B, C, M, K, N);        
 
         // Measure error
-        //referenceMatmul_full(A, B, C_ref, M, K, N);
         double residual = rel_residual(C, C_ref, M * N);
         residuals[i] = residual;
-
-        PRINT_ON_ERROR(cudaFreeHost(A));
-        PRINT_ON_ERROR(cudaFreeHost(B));
-        PRINT_ON_ERROR(cudaFreeHost(C_ref));
     }
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
+    PRINT_ON_ERROR(cudaFreeHost(A));
+    PRINT_ON_ERROR(cudaFreeHost(B));
     PRINT_ON_ERROR(cudaFreeHost(C));
+    PRINT_ON_ERROR(cudaFreeHost(C_ref));
 }
 
 
@@ -220,13 +224,14 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 13;
-    int powerOfMinSize = 7;
+    int powerOfMaxSize = 12;
+    int powerOfMinSize = 4;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
-    const int numInputTypes = 5;
-    const int maxIterationsPerConfig = 50;
-    const int maxIterationsPerInputType = maxIterationsPerConfig / numInputTypes;
+    const int numInputTypes = 1;
+    const int maxPerfIterationsPerConfig = 1;
+    const int maxPrecIterationsPerConfig = 1024 * numInputTypes;
+    const int maxIterationsPerInputType = maxPrecIterationsPerConfig / numInputTypes;
     int *iterationsPerConfig = (int*) calloc(numSizes, sizeof(*iterationsPerConfig));
     int *precisionIterationsPerInputType = (int*) calloc(numSizes, sizeof(*precisionIterationsPerInputType));
     const int warmupIterations = 1;
@@ -237,34 +242,38 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         .targetFunction = function->name,
     };
 
-    double *timings = (double*) calloc(numSizes * maxIterationsPerConfig, sizeof(*timings));
+    double *timings = (double*) calloc(numSizes * maxPerfIterationsPerConfig, sizeof(*timings));
     double *residuals = (double*) calloc(numSizes * numInputTypes * maxIterationsPerInputType, sizeof(*residuals));
     struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
     struct precisionMeasurement *ms = (struct precisionMeasurement*) calloc(numSizes * numInputTypes, sizeof(*ms));
     for (int i = 0; i < numSizes; i++)
     {
         size_t n = 1 << (i + powerOfMinSize);
+        // size_t M = 16;
+        // size_t K = n;
+        // size_t N = 16;
 
         // Adapt number of iterations based on heuristics on runtime
-        iterationsPerConfig[i] = maxIterationsPerConfig;
+        iterationsPerConfig[i] = maxPerfIterationsPerConfig;
         precisionIterationsPerInputType[i] = maxIterationsPerInputType;
 
         if (n >= 1 << 13) {
-            iterationsPerConfig[i] = 1;
+            iterationsPerConfig[i] = std::min(1, maxPerfIterationsPerConfig);
         } else if (n >= 1 << 12) {
-            iterationsPerConfig[i] = 5;
+            iterationsPerConfig[i] = std::min(5, maxPerfIterationsPerConfig);
         }
-        
-        if (n >= 1 << 11) {
-            precisionIterationsPerInputType[i] = 0;
+        if (n >= 1 << 13) {
+            precisionIterationsPerInputType[i] = std::min(0, maxIterationsPerInputType);
+        } else if (n >= 1 << 12) {
+            precisionIterationsPerInputType[i] = std::min(8, maxIterationsPerInputType);
+        } else if (n >= 1 << 11) {
+            precisionIterationsPerInputType[i] = std::min(64, maxIterationsPerInputType);
         } else if (n >= 1 << 10) {
-            precisionIterationsPerInputType[i] = 1;
-        } else if (n >= 1 << 9) {
-            precisionIterationsPerInputType[i] = 5;
+            precisionIterationsPerInputType[i] = std::min(1024, maxIterationsPerInputType);
         }
 
         flop_counts counts;
-        bool sanityCheck = timeRun<T>(&timings[i * maxIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
+        bool sanityCheck = timeRun<T>(&timings[i * maxPerfIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
         
         char* profile_output = profiler_segments_print_json();
         size_t len = strlen(profile_output);
@@ -274,7 +283,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         int m_idx = i * numInputTypes;
         for (int input_type = 0; input_type < numInputTypes; input_type++) {
             double *residuals_idx = &residuals[(i * numInputTypes + input_type) * maxIterationsPerInputType];
-            measurePrecision<T>(input_type, residuals_idx, precisionIterationsPerInputType[i], n, n, n, function->function, rng);
+            measurePrecision<T>(input_type+1, residuals_idx, precisionIterationsPerInputType[i], n, n, n, function->function, rng);
             struct precisionMeasurement m = {
                 .input_type = input_type,
                 .residuals = residuals_idx,
@@ -290,7 +299,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
             .math_flops = 2L*n*n*n,
-            .timings = &timings[i * maxIterationsPerConfig],
+            .timings = &timings[i * maxPerfIterationsPerConfig],
             .profile_output = local_copy,
             .sanity_check = sanityCheck,
             .precMs = &ms[m_idx],

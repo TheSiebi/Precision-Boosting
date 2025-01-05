@@ -27,7 +27,7 @@ def load_json(file_path: str) -> dict:
     return data
 
 
-def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, float]:
+def compute_metrics(timings: List[int], cvt: bool) -> Tuple[float, int, int, float, float, float]:
     """
     Compute metrics on timings: median, mean, min, and max
 
@@ -42,7 +42,10 @@ def compute_metrics(timings: List[int]) -> Tuple[float, int, int, float, float, 
         exit(1)
 
     # Convert timings from nanoseconds to seconds
-    timings_ms = np.array(timings) / 1e9
+    if cvt:
+        timings_ms = np.array(timings) / 1e9
+    else:
+        timings_ms = np.array(timings)
 
     # Calculate  metrics
     median_timings = np.median(timings_ms)
@@ -133,7 +136,7 @@ def generate_speedup_plot(data: dict, input_folder: str):
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-        median_timings = [compute_metrics(run['timings'])[0] for run in runs]
+        median_timings = [compute_metrics(run['timings'], True)[0] for run in runs]
         sizes = [run['N'] for run in runs] # Assume square matrices only for now
         gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / median_timings[i] for i in range(len(runs))]
@@ -200,7 +203,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-        metrics = [compute_metrics(run['timings']) for run in runs]
+        metrics = [compute_metrics(run['timings'], True) for run in runs]
         median_timings = [metric[0] for metric in metrics]
         ci_lower = [metric[4] for metric in metrics]
         ci_upper = [metric[5] for metric in metrics]
@@ -266,16 +269,20 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
             
             all_run_residuals = [m['residuals'] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
 
-            avg_residual = [np.mean(np.array(run_residual)) for run_residual in all_run_residuals]
+            metrics = [compute_metrics(run_residuals, False) for run_residuals in all_run_residuals]
+            median_residuals = [metric[0] for metric in metrics]
+            ci_lower_bounds = [metric[4] for metric in metrics]
+            ci_upper_bounds = [metric[5] for metric in metrics]
+
             sizes = [run['N'] for run in runs]
-            residuals = [avg_residual[i] for i in range(len(runs))]
             label = d['meta']['function name']
             # Add compiler info if contained in data
             if 'compiler' in d['meta']:
                 label += f" ({d['meta']['compiler']})"
             if 'flags' in d['meta']:
                 label += f" {d['meta']['flags']}"
-            plt.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
+            plt.fill_between(sizes, ci_lower_bounds, ci_upper_bounds, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
+            plt.plot(sizes, median_residuals, color=line_colors[i%len(line_colors)], label=label)
 
         # Only show gpu if all data is from the same gpu
         title_suffix = ""
@@ -417,7 +424,7 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
 
     # Compute performance for each run
     runs = data['runs']
-    metrics = [compute_metrics(run['timings']) for run in runs]
+    metrics = [compute_metrics(run['timings'], True) for run in runs]
     median_timings = [metric[0] for metric in metrics]
     ci_lower = [metric[4] for metric in metrics]
     ci_upper = [metric[5] for metric in metrics]

@@ -12,4 +12,7 @@ int storeMatrix(T* matrix, size_t M, size_t K, size_t N, char operand, const std
 template<class T>
 std::tuple<T*, T*, T*> getMatrices(size_t M, size_t K, size_t N, int input_type, int index, struct LCG *rng);
 
+template<class T>
+bool fillMatrices(T*, T*, T*, size_t M, size_t K, size_t N, int input_type, int index, struct LCG *rng);
+
 #endif // MATCACHE_H
