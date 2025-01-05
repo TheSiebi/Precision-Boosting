@@ -73,11 +73,14 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
     int k = 1;
 
     // beta = fl(...)
-    const float log2u = -11.f; // half precision
-    const float beta = ceilf((-log2u + log2f(q)) / 2.0);
+    const double log2u = -24.f; // half precision
+    const double beta = ceil((-log2u + log2(q)) / 2.0);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<__half>> D = { std::vector<__half>(m * n, static_cast<__half>(0.f)) };
+
+    // DEBUG
+    // printf("(in)   a: %s (%.25f)\n", fp64_binary_representation(a[0]).c_str(), a[0]);
 
     // while(k < l)
     while (k < l)
@@ -86,13 +89,13 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
         std::vector<double> mu(m, 0.0);
         for (size_t i = 0; i < m; ++i)
             for (size_t j = 0; j < q; ++j)
-                mu[i] = max(mu[i], abs(a[ix(i, j, m, q)]));
+                mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
-        double overalMax = 0.0;
+        double overall_max = 0.0;
         for (const auto mu_i: mu)
-            overalMax = max(overalMax, mu_i);
-        if (overalMax == 0.0)
+            overall_max = max(overall_max, mu_i);
+        if (overall_max == 0.0)
         {
             // printf("Early termination\n");
             return D;
@@ -124,6 +127,13 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
                 a[ij] -= static_cast<double>(value);
             }
         }
+
+        // DEBUG
+        // printf("k=%d.   w: %s (%.25f)\n", k, fp64_binary_representation(w[0]).c_str(), w[0]);
+        // printf("k=%d. max: %s (%.25f)\n", k, fp64_binary_representation(overall_max).c_str(), overall_max);
+        // printf("k=%d.   a: %s (%.25f)\n", k, fp64_binary_representation(a[0]).c_str(), a[0]);
+        // const auto Dkdouble = static_cast<double>(D[k-1][0]);
+        // printf("k=%d. D_k: %s (%.25f)\n", k, fp64_binary_representation(Dkdouble).c_str(), Dkdouble);
 
 
         // % Checking sparsity of D{k}
@@ -164,11 +174,14 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
     int k = 1;
 
     // beta = fl(...)
-    const float log2u = -24.f;
-    const float beta = ceilf((-log2u + log2f(q)) / 2.f);
+    const double log2u = -24.0;
+    const double beta = ceil((-log2u + log2(q)) / 2.0);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<float>> D = { std::vector<float>(m * n, 0.f) };
+
+    // DEBUG
+    // printf("(in)   a: %s (%.25f)\n", fp64_binary_representation(a[0]).c_str(), a[0]);
 
     // while(k < l)
     while (k < l)
@@ -180,35 +193,47 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
                 mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
-        double max = 0.0;
+        double overall_max = 0.0;
         for (const auto mu_i: mu)
-            max = fmax(max, mu_i);
-        if (max == 0.0)
+            overall_max = fmax(overall_max, mu_i);
+        if (overall_max == 0.0)
         {
             // printf("Early termination\n");
             return D;
         }
 
         // w = fl(...);
-        std::vector<float> w(m);
+        std::vector<double> w(m);
         for (size_t i = 0; i < m; ++i)
-            w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
+            w[i] = exp2(ceil(log2(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
-        std::vector<float> S(m * n);
-        for (size_t i = 0; i < m; ++i)
-            for (size_t j = 0; j < n; ++j)
-                S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
+        // We'll read from w instead
+        // std::vector<float> S(m * n);
+        // for (size_t i = 0; i < m; ++i)
+        //     for (size_t j = 0; j < n; ++j)
+        //         S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
 
         // D{k} = fl((A + S) - S);
         // A = fl(A - D{k});
         D.resize(k, std::vector<float>(m * n));
-        for (size_t ij = 0; ij < m * n; ++ij)
+        for (size_t i = 0; i < m; ++i)
         {
-            D[k - 1][ij] = a[ij] + S[ij];
-            D[k - 1][ij] -= S[ij];
-            a[ij] -= D[k - 1][ij];
+            for (size_t j = 0; j < n; ++j)
+            {
+                const size_t ij = ix(i, j, m, n);
+                D[k - 1][ij] = a[ij] + w[i];
+                D[k - 1][ij] -= w[i];
+                a[ij] -= D[k - 1][ij];
+            }
         }
+
+        // DEBUG
+        // printf("k=%d.   w: %s (%.25f)\n", k, fp64_binary_representation(w[0]).c_str(), w[0]);
+        // printf("k=%d. max: %s (%.25f)\n", k, fp64_binary_representation(overall_max).c_str(), overall_max);
+        // printf("k=%d.   a: %s (%.25f)\n", k, fp64_binary_representation(a[0]).c_str(), a[0]);
+        // const auto Dkdouble = static_cast<double>(D[k-1][0]);
+        // printf("k=%d. D_k: %s (%.25f)\n", k, fp64_binary_representation(Dkdouble).c_str(), Dkdouble);
 
         // % Checking sparsity of D{k}
         // Omitted
