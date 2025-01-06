@@ -34,81 +34,89 @@ double rel_residual(T *result, T *reference, int n) {
     return (double) (sqrt(sqr_sum_err / sqr_sum_ref));
 }
 
-template<class T>
-double rel_residual_l1(T *result, T *reference, int n) {
-    __float80 abs_sum_err = 0.0;
-    __float80 abs_sum_ref = 0.0;
-    for(int i = 0; i < n; i++) {
-        __float80 ref = (__float80) reference[i];
-        __float80 err = ref - ((__float80) result[i]);
-        abs_sum_err += abs(err);
-        abs_sum_ref += abs(ref);
-    }
-    return (double) (abs_sum_err / abs_sum_ref);
-}
-
-template<class T>
-double mre_residual(T *result, T *reference, int n) {
-    __float80 sum_err = 0.0;
-    for(int i = 0; i < n; i++) {
-        __float80 ref = (__float80) reference[i];
-        __float80 abs_err = abs(ref - ((__float80) result[i]));
-        __float80 rel_err = abs_err / abs(ref);
-        sum_err += rel_err;
-    }
-    return (double) (sum_err / ((__float80) n));
-}
-
-template<class T>
-double mse_residual(T *result, T *reference, int n) {
-    __float80 sum_sqr_err = 0.0;
-    for(int i = 0; i < n; i++) {
-        __float80 ref = (__float80) reference[i];
-        __float80 abs_err = abs(ref - ((__float80) result[i]));
-        sum_sqr_err += abs_err * abs_err;
-    }
-    return (double) (sum_sqr_err / ((__float80) n));
-}
-
-template<class T>
-double rmse_residual(T *result, T *reference, int n) {
-    __float80 sum_sqr_err = 0.0;
-    for(int i = 0; i < n; i++) {
-        __float80 ref = (__float80) reference[i];
-        __float80 abs_err = abs(ref - ((__float80) result[i]));
-        sum_sqr_err += abs_err * abs_err;
-    }
-    return (double) sqrt(sum_sqr_err / ((__float80) n));
-}
-
-template<class T>
-double rmsre_residual(T *result, T *reference, int n) {
-    __float80 sum_sqr_err = 0.0;
-    for(int i = 0; i < n; i++) {
-        __float80 ref = (__float80) reference[i];
-        __float80 abs_err = abs(ref - ((__float80) result[i]));
-        __float80 rel_err = abs_err / abs(ref);
-        sum_sqr_err += rel_err * rel_err;
-    }
-    return (double) sqrt(sum_sqr_err / ((__float80) n));
-}
-
 template double frobenius_norm<float>(float *result, int n);
 template double frobenius_norm<double>(double *result, int n);
 template double abs_residual<float>(float *result, float *reference, int n);
 template double abs_residual<double>(double *result, double *reference, int n);
 template double rel_residual<float>(float *result, float *reference, int n);
 template double rel_residual<double>(double *result, double *reference, int n);
-template double rel_residual_l1<float>(float *result, float *reference, int n);
-template double rel_residual_l1<double>(double *result, double *reference, int n);
-template double mre_residual<float>(float *result, float *reference, int n);
-template double mre_residual<double>(double *result, double *reference, int n);
-template double mse_residual<float>(float *result, float *reference, int n);
-template double mse_residual<double>(double *result, double *reference, int n);
-template double rmse_residual<float>(float *result, float *reference, int n);
-template double rmse_residual<double>(double *result, double *reference, int n);
-template double rmsre_residual<float>(float *result, float *reference, int n);
-template double rmsre_residual<double>(double *result, double *reference, int n);
+
+template<class T>
+void calc_precision_metrics(T *result, T *reference, int n, double *metrics) {
+    __float80 sum_abs_ref = 0.0;
+    __float80 sum_abs_err = 0.0;
+
+    __float80 sum_rel_err = 0.0;
+    __float80 sum_rel_max = 0.0;
+    __float80 sum_rel_adj = 0.0;
+    __float80 sum_rel_min1 = 0.0;
+
+    __float80 sum_sqr_ref = 0.0;
+    __float80 sum_sqr_err = 0.0;
+    __float80 sum_sqr_rel = 0.0;
+
+    __float80 sum_log_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 res = (__float80) result[i];
+        __float80 ref = (__float80) reference[i];
+
+        __float80 abs_err = abs(ref - res);
+        __float80 rel_err = abs_err / abs(ref);
+        __float80 rel_err_max = abs_err / std::max(abs(ref), abs(res));
+        __float80 rel_err_adj = abs_err / std::max(abs(ref + ref - res), abs(res));
+        __float80 rel_err_min1 = std::min(rel_err, (__float80) 1.0);
+
+        __float80 sqr_ref = ref * ref;
+        __float80 sqr_err = abs_err * abs_err;
+        __float80 sqr_rel = rel_err * rel_err;
+
+        __float80 log_err = (abs(res) <= 0.0 || abs(ref) <= 0.0) ? 1.0 : abs(std::log2(abs(res)) - std::log2(abs(ref)));
+
+        sum_abs_err += abs_err;
+        sum_abs_ref += abs(ref);
+
+        sum_rel_err += rel_err;
+        sum_rel_max += rel_err_max;
+        sum_rel_adj += rel_err_adj;
+        sum_rel_min1 += rel_err_min1;
+
+        sum_sqr_ref += sqr_ref;
+        sum_sqr_err += sqr_err;
+        sum_sqr_rel += sqr_rel;
+
+        sum_log_err += log_err;
+    }
+    
+    __float80 inv_n = ((__float80) 1.0) / ((__float80) n);
+    
+    __float80 residual = std::sqrt(sum_sqr_err / sum_sqr_ref);
+    __float80 residual_l1 = sum_abs_err / sum_abs_ref;
+
+    __float80 mean_abs_err = sum_abs_err * inv_n;
+    __float80 mean_sqr_err = std::sqrt(sum_sqr_err * inv_n);
+
+    __float80 mean_rel_err = sum_rel_err * inv_n;
+    __float80 mean_rel_sqr = std::sqrt(sum_sqr_rel * inv_n);
+    __float80 mean_rel_max = sum_rel_max * inv_n;
+    __float80 mean_rel_adj = sum_rel_adj * inv_n;
+    __float80 mean_rel_min1 = sum_rel_min1 * inv_n;
+
+    __float80 mean_log_err = sum_log_err * inv_n;
+
+    metrics[0] = (double) residual;
+    metrics[1] = (double) residual_l1;
+    metrics[2] = (double) mean_abs_err;
+    metrics[3] = (double) mean_sqr_err;
+    metrics[4] = (double) mean_rel_err;
+    metrics[5] = (double) mean_rel_sqr;
+    metrics[6] = (double) mean_rel_max;
+    metrics[7] = (double) mean_rel_adj;
+    metrics[8] = (double) mean_rel_min1;
+    metrics[9] = (double) mean_log_err;
+}
+
+template void calc_precision_metrics<float>(float *result, float *reference, int n, double *metrics);
+template void calc_precision_metrics<double>(double *result, double *reference, int n, double *metrics);
 
 /// Returns the index of an element with error that is too great. If none is found, returns -1
 template<class T>

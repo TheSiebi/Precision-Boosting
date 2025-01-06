@@ -4,6 +4,7 @@
 #include "rand.h"
 #include <math.h>
 
+const size_t NUM_METRICS = 10;
 const double MAX_RELATIVE_ERROR = 1e-1; // A relative error above this value will count as a fail
 const double MAX_ABSOLUTE_ERROR = 1e-4; // Any error less than this will not count as a failure, even if relative error is too large
 
@@ -16,37 +17,18 @@ double abs_residual(T *result, T *reference, int n);
 template<class T>
 double rel_residual(T *result, T *reference, int n);
 
-template<class T>
-double rel_residual_l1(T *result, T *reference, int n);
-
-template<class T>
-double mre_residual(T *result, T *reference, int n);
-
-template<class T>
-double mse_residual(T *result, T *reference, int n);
-
-template<class T>
-double rmse_residual(T *result, T *reference, int n);
-
-template<class T>
-double rmsre_residual(T *result, T *reference, int n);
-
 extern template double frobenius_norm<float>(float *result, int n);
 extern template double frobenius_norm<double>(double *result, int n);
 extern template double abs_residual<float>(float *result, float *reference, int n);
 extern template double abs_residual<double>(double *result, double *reference, int n);
 extern template double rel_residual<float>(float *result, float *reference, int n);
 extern template double rel_residual<double>(double *result, double *reference, int n);
-extern template double rel_residual_l1<float>(float *result, float *reference, int n);
-extern template double rel_residual_l1<double>(double *result, double *reference, int n);
-extern template double mre_residual<float>(float *result, float *reference, int n);
-extern template double mre_residual<double>(double *result, double *reference, int n);
-extern template double mse_residual<float>(float *result, float *reference, int n);
-extern template double mse_residual<double>(double *result, double *reference, int n);
-extern template double rmse_residual<float>(float *result, float *reference, int n);
-extern template double rmse_residual<double>(double *result, double *reference, int n);
-extern template double rmsre_residual<float>(float *result, float *reference, int n);
-extern template double rmsre_residual<double>(double *result, double *reference, int n);
+
+template<class T>
+void calc_precision_metrics(T *result, T *reference, int n, double *metrics);
+
+extern template void calc_precision_metrics<float>(float *result, float *reference, int n, double *metrics);
+extern template void calc_precision_metrics<double>(double *result, double *reference, int n, double *metrics);
 
 template<class T>
 int test_matmul_correctness_probabilistic(LCG *rng, T *A, T *B, T *C, size_t M, size_t K, size_t N);

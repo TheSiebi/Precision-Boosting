@@ -237,8 +237,19 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     plt.savefig(os.path.join(output_dir, output_file))
     plt.close()
 
+def generate_precision_comparison_plot_all(data: List[dict], input_folder: str):
+    generate_precision_comparison_plot(data, input_folder, 'residual', 'Relative Frobenius Residual')
+    generate_precision_comparison_plot(data, input_folder, 'residual_l1', 'Relative Absolute Residual')
+    generate_precision_comparison_plot(data, input_folder, 'mean_abs_err', 'Mean Absolute Error')
+    generate_precision_comparison_plot(data, input_folder, 'mean_sqr_err', 'Mean Squared Error')
+    generate_precision_comparison_plot(data, input_folder, 'mean_rel_err', 'Mean Relative Error')
+    generate_precision_comparison_plot(data, input_folder, 'mean_rel_sqr', 'Mean Relative Squared Error')
+    generate_precision_comparison_plot(data, input_folder, 'mean_rel_max', 'Mean Relative Error (Max\' equation)')
+    generate_precision_comparison_plot(data, input_folder, 'mean_rel_adj', 'Mean Relative Error (Tynan\'s equation)')
+    generate_precision_comparison_plot(data, input_folder, 'mean_rel_min1', 'Mean Relative Error (Capped at 1)')
+    generate_precision_comparison_plot(data, input_folder, 'mean_log_err', 'Mean Logarithmic Error')
 
-def generate_precision_comparison_plot(data: List[dict], input_folder: str):
+def generate_precision_comparison_plot(data: List[dict], input_folder: str, metric_key: str, metric_name: str):
     """
     Generate precision comparison plot and save it at timings/input_folder/
 
@@ -250,7 +261,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
 
     # Compute performance for each run
     for input_type in unique_input_types:
-        plot_setup(ylabel="Relative residual", scientific=True)
+        plot_setup(ylabel=metric_name, scientific=True)
         plt.yscale('log', base=10)
         # -- Comparison Plot specific setup --
         #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
@@ -267,7 +278,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
             if not runs:
                 continue
             
-            all_run_residuals = [m['residuals'] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
+            all_run_residuals = [m[metric_key] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
 
             metrics = [compute_metrics(run_residuals, False) for run_residuals in all_run_residuals]
             median_residuals = [metric[0] for metric in metrics]
@@ -294,7 +305,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         #plt.gca().set_ylim(bottom=0)
 
         output_dir = input_folder
-        output_file = "prec_comparison_type_" + str(input_type) + ".png"
+        output_file = "prec_comparison_type_" + str(input_type) + "_" + metric_key + ".png"
         print(output_dir)
         plt.savefig(os.path.join(output_dir, output_file))
         plt.close()
@@ -486,7 +497,7 @@ def main():
             generate_speedup_plot(json_data, args.input_folder)
         elif args.precision:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
-            generate_precision_comparison_plot(json_data, args.input_folder)
+            generate_precision_comparison_plot_all(json_data, args.input_folder)
         elif args.profile:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):
