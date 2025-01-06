@@ -158,6 +158,12 @@ matmul_variant<float> matmulVariants32[] =
         .highestPerforming = true,
     },
     {
+        .function = matmul_simpleMarkidis_float<7>,
+        .name = "Ootomo CUBLAS",
+        .description = "Like Ootomo v2 but without a merged kernel and 3 separate CUBLAS invocations",
+        .highestPerforming = true,
+    },
+    {
         .function = matmul_cuda<float, float, 1, false>,
         .name = "matmul CUDA cores v1",
         .description = "CUDA core fp32 matrix multiplication with warptiling",

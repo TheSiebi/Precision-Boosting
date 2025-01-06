@@ -153,6 +153,13 @@ template flop_counts matmul_simpleMarkidis<5, 1, true>(float *A, float *B, float
 template flop_counts matmul_simpleMarkidis<6, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 #endif
 
+
+enum class ComputeMode {
+    CUDACores, 
+    TensorCores,
+    CUBLAS
+};
+
 /**
  * Template arguments:
  * - splitCount: Determines into how many matrices the A & B matrices are split
@@ -165,7 +172,7 @@ template flop_counts matmul_simpleMarkidis<6, 1, true>(float *A, float *B, float
  * - useTensorCores: If true, tensor cores are used for matmul, otherwise CUDA cores
  * - matmulTensorVersion: Which version of matmulTensorCores to use
  */
-template<int splitCount, int mergeCount, typename T, typename mulInputType, typename mulType, typename mulOutputType, bool useTensorCores, int matmulTensorVersion>
+template<int splitCount, int mergeCount, typename T, typename mulInputType, typename mulType, typename mulOutputType, ComputeMode computeMode, int matmulTensorVersion>
 flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
                                         std::pair<int, int> mergePattern[mergeCount], T scale, int mask = -1) 
 {
@@ -217,7 +224,7 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
         size_t aIndex = mergePattern[i].first * M * K;
         size_t bIndex = mergePattern[i].second * K * N;
         size_t cIndex = i * M * N;
-        if constexpr(useTensorCores)
+        if constexpr(computeMode == ComputeMode::TensorCores)
         {
             if constexpr(std::is_same<mulType, mulOutputType>())
             {
@@ -236,9 +243,14 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
             }
             PRINT_ON_ERROR(cudaGetLastError());
         }
-        else 
+        else if constexpr(computeMode == ComputeMode::CUDACores)
         {
             matmulCUDACores<mulInputType, mulType, mulOutputType, 1>(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
+        else if constexpr(computeMode == ComputeMode::CUBLAS)
+        {
+            matmul_cuBLASMixed(deviceA + aIndex, deviceB + bIndex, deviceC + cIndex, M, K, N);
             PRINT_ON_ERROR(cudaGetLastError());
         }
         T factor = std::pow(scale, mergePattern[i].first) * std::pow(scale, mergePattern[i].second);
@@ -283,46 +295,52 @@ static bool compareByDescendingSum(const std::pair<int, int>& a, const std::pair
     return (a.first + a.second) > (b.first + b.second);
 }
 
+/**
+ * The below Markidis versions that use tensor cores are not moved to v6 because
+ * they are only intended for precision experiments and v6 only improves performance but 
+ * would require a guard since it doesn't work on older gpus
+ */
+
 template<>
 flop_counts matmul_simpleMarkidis_float<0>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{0, 0}};
-    return matmul_Markidis<2, 1, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<2, 1, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_float<1>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 0}, {0, 0}};
-    return matmul_Markidis<2, 2, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<2, 2, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_float<2>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{0, 1}, {0, 0}};
-    return matmul_Markidis<2, 2, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<2, 2, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_float<3>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 3, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<2, 3, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_float<4>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 4, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<2, 4, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_float<5>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<3, 9, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<3, 9, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
@@ -334,7 +352,15 @@ flop_counts matmul_simpleMarkidis_float<6>(float *A, float *B, float *C, size_t 
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, float, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<splitCount, splitCountSq, float, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
+}
+
+template<>
+flop_counts matmul_simpleMarkidis_float<7>(float *A, float *B, float *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 2;
+    std::pair<int, int> merges[] = {{1, 0}, {0, 1}, {0, 0}};
+    return matmul_Markidis<splitCount, 3, float, half, float, float, ComputeMode::CUBLAS, -1>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 
@@ -342,7 +368,7 @@ template<>
 flop_counts matmul_simpleMarkidis_double<0>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{2, 2}, {2, 1}, {1, 2}, {0, 2}, {1, 1}, {2, 0}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<3, 9, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1<<11);
+    return matmul_Markidis<3, 9, double, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1<<11);
 }
 
 template<>
@@ -354,7 +380,7 @@ flop_counts matmul_simpleMarkidis_double<1>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1<<11);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1<<11);
 }
 
 template<>
@@ -366,7 +392,7 @@ flop_counts matmul_simpleMarkidis_double<2>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, false, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
@@ -378,7 +404,7 @@ flop_counts matmul_simpleMarkidis_double<3>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, false, 4>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
@@ -390,7 +416,7 @@ flop_counts matmul_simpleMarkidis_double<4>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, false, 4>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
@@ -402,7 +428,7 @@ flop_counts matmul_simpleMarkidis_double<5>(double *A, double *B, double *C, siz
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, false, 4>(A, B, C, M, K, N, merges, 1 << 11);
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1 << 11);
 }
 
 template<>
@@ -410,11 +436,11 @@ flop_counts matmul_simpleMarkidis_double<6>(double *A, double *B, double *C, siz
 {
     std::pair<int, int> merges[] = {{3, 3}, {3, 2}, {3, 1}, {3, 0}, {2, 3}, {2, 2}, {2, 1}, {2, 0}, {1, 3}, {1, 2}, {1, 1}, {0, 3}, {0, 2}};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    auto f1 = matmul_Markidis<4, 13, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    auto f1 = matmul_Markidis<4, 13, double, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
     double *C1;
     PRINT_ON_ERROR(cudaMallocHost(&C1, M * N * sizeof(double)));
     std::pair<int, int> merges1[] = {{0, 1}, {1, 0}, {0, 0}};
-    auto f2 = matmul_Markidis<4, 3, double, half, float, double, false, 5>(A, B, C1, M, K, N, merges1, 1 << 11);
+    auto f2 = matmul_Markidis<4, 3, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C1, M, K, N, merges1, 1 << 11);
 
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
@@ -428,11 +454,11 @@ flop_counts matmul_simpleMarkidis_double<7>(double *A, double *B, double *C, siz
 {
     std::pair<int, int> merges[] = {{3, 3}, {3, 2}, {3, 1}, {3, 0}, {2, 3}, {2, 2}, {2, 1}, {1, 3}, {1, 2}, {0, 3}};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    auto f1 = matmul_Markidis<4, 10, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    auto f1 = matmul_Markidis<4, 10, double, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
     double *C1;
     PRINT_ON_ERROR(cudaMallocHost(&C1, M * N * sizeof(double)));
     std::pair<int, int> merges1[] = {{2, 0}, {0, 2}, {1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    auto f2 = matmul_Markidis<4, 6, double, half, float, double, false, 5>(A, B, C1, M, K, N, merges1, 1 << 11);
+    auto f2 = matmul_Markidis<4, 6, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C1, M, K, N, merges1, 1 << 11);
 
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
@@ -447,11 +473,11 @@ flop_counts matmul_simpleMarkidis_double<8>(double *A, double *B, double *C, siz
     std::pair<int, int> merges[] = {{4, 4}, {4, 3}, {4, 2}, {4, 1}, {4, 0}, {3, 4}, {3, 3}, {3, 2}, {3, 1}, {3, 0}, {2, 4}, {2, 3}, {2, 2}, {2, 1}, 
                                     {1, 4}, {1, 3}, {1, 2}, {0, 4}, {0, 3}};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    auto f1 = matmul_Markidis<5, 19, double, half, float, float, true, 5>(A, B, C, M, K, N, merges, 1 << 11);
+    auto f1 = matmul_Markidis<5, 19, double, half, float, float, ComputeMode::TensorCores, 5>(A, B, C, M, K, N, merges, 1 << 11);
     double *C1;
     PRINT_ON_ERROR(cudaMallocHost(&C1, M * N * sizeof(double)));
     std::pair<int, int> merges1[] = {{2, 0}, {0, 2}, {1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    auto f2 = matmul_Markidis<5, 6, double, half, float, double, false, 5>(A, B, C1, M, K, N, merges1, 1 << 11);
+    auto f2 = matmul_Markidis<5, 6, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C1, M, K, N, merges1, 1 << 11);
 
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
@@ -464,28 +490,28 @@ template<>
 flop_counts matmul_simpleMarkidis_double<9>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 4, double, float, float, float, false, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<2, 4, double, float, float, float, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<10>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 4, double, float, float, double, false, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<2, 4, double, float, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<11>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 4, double, float, float, double, false, 4>(A, B, C, M, K, N, merges, 1 << 24);
+    return matmul_Markidis<2, 4, double, float, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1 << 24);
 }
 
 template<>
 flop_counts matmul_simpleMarkidis_double<12>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
 {
     std::pair<int, int> merges[] = {{1, 1}, {0, 1}, {1, 0}, {0, 0}};
-    return matmul_Markidis<2, 4, double, float, double, double, false, 4>(A, B, C, M, K, N, merges, 1.0);
+    return matmul_Markidis<2, 4, double, float, double, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges, 1.0);
 }
 
 template<>
@@ -497,7 +523,7 @@ flop_counts matmul_simpleMarkidis_double<13>(double *A, double *B, double *C, si
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, true, 4>(A, B, C, M, K, N, merges, 1 << 11, ~((1 << 0) - 1));
+    return matmul_Markidis<splitCount, splitCountSq, double, half, float, double, ComputeMode::TensorCores, 4>(A, B, C, M, K, N, merges, 1 << 11, ~((1 << 0) - 1));
 }
 
 template<>
@@ -514,12 +540,12 @@ flop_counts matmul_simpleMarkidis_double<14>(double *A, double *B, double *C, si
 
 
     std::pair<int, int> *merges0 = merges + (splitCountSq - mergeCount0);
-    auto f0 = matmul_Markidis<splitCount, mergeCount0, double, half, float, double, false, 5>(A, B, C, M, K, N, merges0, 1 << 11);
+    auto f0 = matmul_Markidis<splitCount, mergeCount0, double, half, float, double, ComputeMode::CUDACores, -1>(A, B, C, M, K, N, merges0, 1 << 11);
 
     double *C1;
     PRINT_ON_ERROR(cudaMallocHost(&C1, M * N * sizeof(*C1)));
     std::pair<int, int> *merges1 = merges + (splitCountSq - (mergeCount0 + mergeCount1));
-    auto f1 = matmul_Markidis<splitCount, mergeCount1, double, half, float, double, true, 4>(A, B, C1, M, K, N, merges1, 1 << 11);
+    auto f1 = matmul_Markidis<splitCount, mergeCount1, double, half, float, double, ComputeMode::TensorCores, 4>(A, B, C1, M, K, N, merges1, 1 << 11);
 
     for (int i = 0; i < M * N; i++)
         C[i] += C1[i];
