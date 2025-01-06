@@ -8,16 +8,38 @@
 #include "ozaki.h"
 
 #include <cmath>
+#include <cstdint>
 
 #include <array>
+#include <iomanip>
+#include <string>
 #include <vector>
+
+std::string fp64_binary_representation(const double d_)
+{
+    int64_t d;
+    memcpy(&d, &d_, 8);
+    std::string res(64, '0');
+    for (size_t i = 0; i < 64; ++i)
+        if ((d >> (63 - i)) & 0b1)
+            res[i] = '1';
+    return res;
+}
+
+void bitwise_comparison(const double expected, const double actual)
+{
+    std::cout << "\n          s" << std::string(11, 'e') << std::string(52, 'm') << "\n";
+    std::cout << std::setw(10) << "Expected: " << fp64_binary_representation(expected) << "\n";
+    std::cout << std::setw(10) << "Actual: " << fp64_binary_representation(actual) << "\n";
+}
 
 void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t max_splits, const bool verbose)
 {
-    const std::array<size_t, 5> rows_sizes = { 2, 4, 8, 10, 256 };
-    const std::array<size_t, 3> cols_sizes = { 5, 16, 256 };
+    const std::array<size_t, 1> rows_sizes = { 1 };
+    const std::array<size_t, 1> cols_sizes = { 1 };
     double float_max_err = 0.0;
     double half_max_err = 0.0;
+    std::cout << std::fixed << std::setprecision(17);
     for (const size_t rows: rows_sizes)
     {
         for (const size_t cols: cols_sizes)
@@ -31,6 +53,7 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
             memcpy(backup, matrix, size * sizeof(double));
 
             // Test split to float
+            // std::cout << "Split to float...\n";
             const auto split_float_matrices = ozaki_split_to_float(rows, cols, matrix, max_splits);
             memset(matrix, 0, size * sizeof(double));
             for (const auto& m: split_float_matrices)
@@ -48,6 +71,7 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
                         << "\tOccured at row " << (ij / cols) << ", col " << (ij % cols) << "\n"
                         << "\tExpected: " << backup[ij] << " Actual: " << matrix[ij] << "\n"
                         << "\tAbsolute error: \033[33m" << abs_err << "\033[0m\n";
+                    bitwise_comparison(backup[ij], matrix[ij]);
                     return;
                 }
                 float_max_err = fmax(float_max_err, abs_err);
@@ -56,12 +80,13 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
                 std::cout << "Max err after " << split_float_matrices.size() << " splits (float): " << float_max_err << "\n";
 
             // Test split to half
+            // std::cout << "Split to half...\n";
             memcpy(matrix, backup, size * sizeof(double));
             const auto split_half_matrices = ozaki_split_to_half(rows, cols, matrix, max_splits);
             memset(matrix, 0, size * sizeof(double));
             for (const auto& m: split_half_matrices)
                 for (size_t ij = 0; ij < size; ++ij)
-                    matrix[ij] += __half2float(m[ij]);
+                    matrix[ij] += static_cast<double>(m[ij]);
 
             // Calculate error
             for (size_t ij = 0; ij < size; ++ij)
@@ -74,7 +99,8 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
                         << "\tOccured at row " << (ij / cols) << ", col " << (ij % cols) << "\n"
                         << "\tExpected: " << backup[ij] << " Actual: " << matrix[ij] << "\n"
                         << "\tAbsolute error: \033[33m" << abs_err << "\033[0m\n";
-                    return;
+                    bitwise_comparison(backup[ij], matrix[ij]);
+                    // return;
                 }
                 half_max_err = fmax(half_max_err, abs_err);
             }

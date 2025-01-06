@@ -46,4 +46,7 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
 template<int version>
 flop_counts matmul_ozaki(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 
+template<int version>
+flop_counts matmul_ozaki_float(float *a, float *b, float *c, size_t m, size_t n, size_t p);
+
 #endif // MATMUL_H
