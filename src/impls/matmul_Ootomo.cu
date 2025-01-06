@@ -625,7 +625,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         CUDA_DEVICE_SYNCHRONIZE();
     }
 
-    PROFILE_SEGMENTS_SWITCH("matmul");
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
     if constexpr(version == 0)
     {
         if (M < 256 | K < 256 | N < 256)
