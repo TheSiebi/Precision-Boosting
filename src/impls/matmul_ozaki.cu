@@ -530,7 +530,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
     size_t CSizeF = M * N * sizeof(mulOutputType);
     size_t CSize = M * N * sizeof(T);
 
-    PROFILE_FUNCTION_SEGMENT_START("allocate gpu");
+    PROFILE_FUNCTION_SEGMENT_START("allocate");
 
     mulInputType *deviceA, *deviceB, *deviceBTransposed;
     mulOutputType *deviceC;
@@ -555,7 +555,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
     PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
     CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("split");
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
     if constexpr(std::is_same<half, mulInputType>::value)
     {
         const double beta = ceil((log2((double)K) + 11) / 2.0);
@@ -594,9 +594,6 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         else 
             ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
     }
-    CUDA_DEVICE_SYNCHRONIZE();
-
-    PROFILE_SEGMENTS_SWITCH("matmul");
 
     cudaStream_t streams[mergeCount];
     for(int i = 0; i < mergeCount; i++)
@@ -609,9 +606,6 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
     }
 
-    CUDA_DEVICE_SYNCHRONIZE();
-
-    PROFILE_SEGMENTS_SWITCH("merge");
     merge_n_cuda<mergeCount, mulOutputType, T><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();

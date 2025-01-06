@@ -23,7 +23,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     assert((K % 16) == 0);
     assert((N % 16) == 0);
 
-    PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
+    PROFILE_FUNCTION_SEGMENT_START("allocate");
 
     cudaStream_t streams[streamCount];
     for(int i = 0; i < streamCount; i++)
@@ -33,8 +33,6 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     size_t ASize = M * K * sizeof(half);
     size_t BSize = K * N * sizeof(half);
     size_t CSize = M * N * sizeof(float);
-    
-    PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
     half *deviceA[2], *deviceB[2];
     float *deviceC[4];
@@ -51,7 +49,7 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
     PRINT_ON_ERROR(cudaMalloc(&deviceAFull, M*K*sizeof(float)));
     PRINT_ON_ERROR(cudaMalloc(&deviceBFull, K*N*sizeof(float)));
 
-    PROFILE_SEGMENTS_SWITCH("memcpy h2d & split");
+    PROFILE_SEGMENTS_SWITCH("memcpy host2device");
 
     size_t copyCountA = (M*K)/streamCount;
     size_t copySizeA = copyCountA * sizeof(float);
@@ -71,6 +69,15 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
                                  B + offsetB, copySizeB, 
                                 cudaMemcpyHostToDevice, streams[i])
         );
+    }
+    PRINT_ON_ERROR(cudaGetLastError());
+    CUDA_DEVICE_SYNCHRONIZE();
+
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
+    for(int i = 0; i < streamCount; i++)
+    {
+        size_t offsetA = copyCountA * i;
+        size_t offsetB = copyCountB * i;
         split_2<float, half>
                <<<DivRoundUp(copyCountA, 256), 256, 0, streams[i]>>>
                (deviceAFull + offsetA, deviceA[0] + offsetA, deviceA[1] + offsetA, scale);
@@ -78,18 +85,13 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
                <<<DivRoundUp(copyCountB, 256), 256, 0, streams[i]>>>
                (deviceBFull + offsetB, deviceB[0] + offsetB, deviceB[1] + offsetB, scale);
     }
-
     PRINT_ON_ERROR(cudaGetLastError());
-    CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < 4; i++)
     {
         matmulTensorCores<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
     }
-    CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("merge");
     merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
               (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], scale);
     PRINT_ON_ERROR(cudaGetLastError());

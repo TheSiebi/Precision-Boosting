@@ -486,6 +486,81 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
     plt.close()
 
 
+def generate_profile_comparison_plot(data: List[dict], input_folder: str):
+    """
+    Generate a row of profile plot showcasing profile segments and save it at timings/input_folder/plot_filename_profile.png
+
+    Args:
+        data: JSON data containing performance information
+        input_folder: Name of input folder at timings
+        plot_filename: Plot will be saved as plot_filename_profile.png
+    """
+    num_plots = len(data)
+    fig, axes = plt.subplots(1, num_plots, figsize=(num_plots * 5, 5), sharey=True)
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
+
+    if num_plots == 1:
+        axes = [axes]  # Ensure axes is iterable even for a single plot
+
+    for idx, (ax, dataset) in enumerate(zip(axes, data)):
+        runs = dataset['runs']
+        sizes = [run['N'] for run in runs]  # Only use square matrices for now
+        profile_data = [parse_profile_text(run['profile_output']) for run in runs]
+
+        # Normalize profile data to values between 0 and 1
+        for i in range(len(profile_data)):
+            max_value = max(profile_data[i].values())
+            for key in profile_data[i].keys():
+                profile_data[i][key] /= max_value
+
+        # Plot segment runtimes
+        for key in profile_data[0].keys():
+            segment_runtimes = [profile_data[i][key] for i in range(len(profile_data))]
+            ax.plot(sizes, segment_runtimes, color='0.0', linewidth=0.5)
+
+        # Fill area between profile segment runtimes
+        i = 0
+        for key in reversed(profile_data[0].keys()):
+            segment_runtimes = [profile_data[i][key] for i in range(len(profile_data))]
+            ax.fill_between(sizes, segment_runtimes, 0, label=key, alpha=1.0, color=line_colors[i % len(line_colors)])
+            i += 1
+
+        # Customize subplot
+        # Remove all borders except bottom
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().spines['left'].set_visible(False)
+
+        # Add horizontal lines
+        ax.grid(axis='y', color='white', linestyle='-')
+
+        ax.set_xscale('log', base=2)
+        ax.set_title(dataset['meta']['function name'], fontsize=10, fontweight='bold')
+        ax.set_xticks(sizes)
+        ax.set_xlim(min(sizes), max(sizes))  # Ensure xticks span full width of plot
+        ax.set_xlabel(".", color=(0,0,0,0)) # invisible x-axis label to keep space
+        if idx == 0:
+            ax.set_ylabel("Fraction of total runtime")
+        ax.set_ylim(0, 1)
+
+    fig.text(0.5, 0.04, 'Matrix size m : matmul-(m,m,m)', ha='center')
+
+    # Add a common legend
+    #handles, labels = axes[0].get_legend_handles_labels()
+    #fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.5), ncol=len(profile_data[0].keys()), fontsize=10)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save the figure
+    output_dir = input_folder
+    output_file = f"profile_comparison.png"
+    plt.savefig(os.path.join(output_dir, output_file))
+    plt.savefig(os.path.join(output_dir, f"profile_comparison.pdf"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+
 def generate_performance_plot(data: dict, input_folder: str, plot_filename: str):
     """
     Generate performance plot and save it at timings/input_folder/plot_filename.png
@@ -541,6 +616,7 @@ def main():
     parser.add_argument('--speedup', action='store_true', help='Flag to generate speedup plot.')
     parser.add_argument('--precision', action='store_true', help='Flag to generate precision plot.')
     parser.add_argument('--profile', action='store_true', help='Flag to generate profile plot.')
+    parser.add_argument('--compare-profile', action='store_true', help='Flag to generate profile comparison plot.')
     parser.add_argument('--compare-matmul', action='store_true', help='Flag to only consider matmul segments for comparison plot.')
     args = parser.parse_args()
 
@@ -567,6 +643,9 @@ def main():
         elif args.compare_matmul:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_matmul_performance_comparison_plot(json_data, args.input_folder)
+        elif args.compare_profile:
+            json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
+            generate_profile_comparison_plot(json_data, args.input_folder)
         elif args.profile:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):
