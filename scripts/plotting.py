@@ -350,7 +350,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         output_file = "prec_comparison_type_" + str(input_type) + ".png"
         print(output_dir)
         plt.savefig(os.path.join(output_dir, output_file))
-        plt.savefig(os.path.join(output_dir, f"{"prec_comparison_type_" + str(input_type)}.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
+        plt.savefig(os.path.join(output_dir, f"prec_comparison_type_{str(input_type)}.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
         plt.close()
 
 
