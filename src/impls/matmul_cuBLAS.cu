@@ -144,6 +144,7 @@ flop_counts matmul_cuBLASMixed(half *A, half *B, float *C, size_t M, size_t K, s
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("CUBLAS multiplication failed\n");
     }
+    cublasDestroy(handle);
 
     flop_counts counts = {0L, 2L*M*K*N, 0L};
     return counts;
