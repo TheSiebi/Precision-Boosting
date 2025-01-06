@@ -105,7 +105,7 @@ def plot_setup(ylabel='[Gflop/s]', scientific=False):
     plt.gca().spines['right'].set_visible(False)
     plt.gca().spines['left'].set_visible(False)
 
-    plt.xlabel('Input size')
+    plt.xlabel('Matrix size m : matmul-(m,m,m)')
     plt.xscale('log', base=2)
 
     plt.ylabel(ylabel, rotation='horizontal', horizontalalignment='left')
@@ -190,8 +190,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     """
     plot_setup()
     # -- Comparison Plot specific setup --
-    #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
-    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
     plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
     all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
     plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
@@ -232,8 +231,70 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     output_file = "comparison.png"
     print(output_dir)
     plt.savefig(os.path.join(output_dir, output_file))
+    plt.savefig(os.path.join(output_dir, f"comparison.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
     plt.close()
 
+def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: str):
+    """
+    Generate performance comparison plot and save it at timings/input_folder/
+
+    Args:
+        data: JSON data containing performance information
+        input_folder: Name of input folder at timings
+    """
+    plot_setup()
+    # -- Comparison Plot specific setup --
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
+    plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
+    all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+    plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
+
+
+    # Compute performance for each run
+    for i in range(len(data)):
+        d = data[i]
+        runs = d['runs']
+
+        matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["matmul"] for run in runs]
+        sizes = [run['N'] for run in runs] # Only use square matrices for now
+        metrics = [compute_metrics(run['timings']) for run in runs]
+        median_timings = [metric[0] for metric in metrics]
+        ci_lower = [metric[4] for metric in metrics]
+        ci_upper = [metric[5] for metric in metrics]
+        gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
+        performances = [gflops[i] / median_timings[i] / matmul_fractions[i] for i in range(len(runs))]
+        ci_lower_perf = [gflops[i] / ci_upper[i] / matmul_fractions[i] for i in range(len(runs))]
+        ci_upper_perf = [gflops[i] / ci_lower[i] / matmul_fractions[i] for i in range(len(runs))]
+
+        label = d['meta']['function name']
+        # Add compiler info if contained in data
+        if 'compiler' in d['meta']:
+            label += f" ({d['meta']['compiler']})"
+        if 'flags' in d['meta']:
+            label += f" {d['meta']['flags']}"
+        plt.plot(sizes, performances, color=line_colors[i%len(line_colors)], label=label)
+        plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
+
+    # Plot horizontal line for peak theoretical performance of machine
+    plt.axhline(y=48.7E3, color='#DE3163', linestyle='--')
+    plt.axhline(y=97.5E3/3, color='#FFBF00', linestyle='--')
+    plt.axhline(y=97.5E3/4, color='#FF7F50', linestyle='--')
+
+    # Only show gpu if all data is from the same gpu
+    title_suffix = ""
+    if all(d['meta']['gpu model'] == data[0]['meta']['gpu model'] for d in data):
+        title_suffix = f" on {data[0]['meta']['gpu model']}"
+
+    plt.title("MatMul Comparison" + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
+    plt.legend()
+    plt.gca().set_ylim(bottom=0)
+
+    output_dir = input_folder
+    output_file = "matmul_comparison.png"
+    print(output_dir)
+    plt.savefig(os.path.join(output_dir, output_file))
+    plt.savefig(os.path.join(output_dir, f"matmul_comparison.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
+    plt.close()
 
 def generate_precision_comparison_plot(data: List[dict], input_folder: str):
     """
@@ -250,8 +311,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         plot_setup(ylabel="Relative residual", scientific=True)
         plt.yscale('log', base=10)
         # -- Comparison Plot specific setup --
-        #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
-        line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+        line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
         plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
         all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
         plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
@@ -290,6 +350,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         output_file = "prec_comparison_type_" + str(input_type) + ".png"
         print(output_dir)
         plt.savefig(os.path.join(output_dir, output_file))
+        plt.savefig(os.path.join(output_dir, f"{"prec_comparison_type_" + str(input_type)}.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
         plt.close()
 
 
@@ -331,7 +392,25 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
 #     plt.savefig(os.path.join(input_folder, f"{file_prefix}_qq_plots.png"))
 
 
-def parse_profile_text(profile_text: str):
+def parse_profile_text_fractions(profile_text: str) -> dict:
+    profile_data = {}
+
+    # Split text by , and iterate over pairs, also add previous value if add_last_value is True
+    tmp = profile_text.split(',')
+    sum = 0
+    for i in range(0, len(tmp)-1, 2):
+        key = tmp[i].strip()
+        value = float(tmp[i+1].strip())
+        profile_data[key] = value
+        sum += value
+
+    # Normalize profile data to values between 0 and 1
+    for key in profile_data.keys():
+        profile_data[key] /= sum
+
+    return profile_data
+
+def parse_profile_text(profile_text: str, add_last_value=True) -> dict:
     """
     Parse profile text into a dictionary
 
@@ -343,12 +422,14 @@ def parse_profile_text(profile_text: str):
     """
     profile_data = {}
 
-    # Split text by , and iterate over pairs, also always add previous value
+    # Split text by , and iterate over pairs, also add previous value if add_last_value is True
     tmp = profile_text.split(',')
     last_value = 0
     for i in range(0, len(tmp)-1, 2):
         key = tmp[i].strip()
-        value = float(tmp[i+1].strip()) + last_value
+        value = float(tmp[i+1].strip())
+        if add_last_value:
+            value += last_value
         last_value = value
         profile_data[key] = value
 
@@ -364,7 +445,7 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
         plot_filename: Plot will be saved as plot_filename_profile.png
     """
     plot_setup(ylabel='Fraction of total runtime')
-    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
 
     # Get profile data
     runs = data['runs']
@@ -401,6 +482,7 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
     output_file = f"{plot_filename}_profile.png"
     print(output_dir)
     plt.savefig(os.path.join(output_dir, output_file))
+    plt.savefig(os.path.join(output_dir, f"{plot_filename}_profile.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
     plt.close()
 
 
@@ -443,6 +525,7 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
     output_file = f"{plot_filename}.png"
     print(output_dir)
     plt.savefig(os.path.join(output_dir, f"{output_file}"))
+    plt.savefig(os.path.join(output_dir, f"{plot_filename}.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
     plt.close()
 
 
@@ -458,6 +541,7 @@ def main():
     parser.add_argument('--speedup', action='store_true', help='Flag to generate speedup plot.')
     parser.add_argument('--precision', action='store_true', help='Flag to generate precision plot.')
     parser.add_argument('--profile', action='store_true', help='Flag to generate profile plot.')
+    parser.add_argument('--compare-matmul', action='store_true', help='Flag to only consider matmul segments for comparison plot.')
     args = parser.parse_args()
 
     rcParams['font.sans-serif'] = ['Tahoma', 'Verdana', 'Gill Sans MT', 'Calibri', 'DejaVu Sans']
@@ -480,6 +564,9 @@ def main():
         elif args.precision:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_precision_comparison_plot(json_data, args.input_folder)
+        elif args.compare_matmul:
+            json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
+            generate_matmul_performance_comparison_plot(json_data, args.input_folder)
         elif args.profile:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):
