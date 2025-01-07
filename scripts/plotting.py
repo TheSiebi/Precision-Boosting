@@ -304,7 +304,6 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
     plt.savefig(os.path.join(output_dir, f"matmul_comparison.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
     plt.close()
 
-def generate_precision_comparison_plot(data: List[dict], input_folder: str):
 def generate_precision_plots(data: List[dict], input_folder: str):
     """
     Generates a precision plot for each input type and save it at timings/input_folder/
@@ -379,7 +378,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
     num_plots = len(unique_input_types)
     width_in_inches = 6.77*2  # Two-column width of A4 in inches
     height_per_plot = 2*2     # Approximate height per subplot in inches
-    fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=False)
+    fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=True)
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
 
     if num_plots == 1:
@@ -410,7 +409,11 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         if idx == 0:
             ax.set_ylabel("Mean Relative Error (Capped at 1)")
         ax.set_yscale('log', base=10)
-        ax.set_xlabel(".", color=(0,0,0,0)) # invisible x-axis label to keep space
+        ax.minorticks_off()
+
+        if idx != 0:
+            # Disable y ticks of axis
+            ax.yaxis.set_tick_params(size=0)
 
         # -- Comparison Plot specific setup --
         line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
