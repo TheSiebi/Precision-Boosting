@@ -220,7 +220,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 14;
+    constexpr int powerOfMaxSize = std::is_same<T, double>::value ? 13 : 14;
     int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
@@ -249,11 +249,11 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         iterationsPerConfig[i] = maxIterationsPerConfig;
         precisionIterationsPerInputType[i] = maxIterationsPerInputType;
 
-        if (n >= 1 << 13) {
-            iterationsPerConfig[i] = 1;
-        } else if (n >= 1 << 12) {
-            iterationsPerConfig[i] = 5;
-        }
+        // if (n >= 1 << 13) {
+        //     iterationsPerConfig[i] = 1;
+        // } else if (n >= 1 << 12) {
+        //     iterationsPerConfig[i] = 5;
+        // }
         
         if (n >= 1 << 11) {
             precisionIterationsPerInputType[i] = 0;
