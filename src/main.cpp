@@ -67,13 +67,13 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_simpleMarkidis<5, 1, false>,
-        .name = "Simple Markidis v5",
+        .name = "Simple Markidis acc:Cuda, 2buff",
         .description = "Simple markidis with shared memory, vectorized loads and accumulation outside tensor cores",
         .highestPerforming = true,
     },
     {
         .function = matmul_simpleMarkidis<5, 1, true>,
-        .name = "Simple Markidis v5 scaled",
+        .name = "Simple Markidis acc:Cuda, 2buff, scaled",
         .description = "Simple markidis with shared memory, vectorized loads, accumulation outside tensor cores and split scaling",
         .highestPerforming = true,
     },
@@ -86,7 +86,7 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_simpleMarkidis<7, 1, true>,
-        .name = "Simple Markidis v7",
+        .name = "Simple Markidis v5",
         .description = "Simple markidis with shared memory, vectorized loads, double buffering and split scaling",
         .highestPerforming = true,
     },
