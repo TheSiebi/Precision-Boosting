@@ -255,13 +255,13 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         //     iterationsPerConfig[i] = 5;
         // }
         
-        if (n >= 1 << 11) {
-            precisionIterationsPerInputType[i] = 0;
-        } else if (n >= 1 << 10) {
-            precisionIterationsPerInputType[i] = 1;
-        } else if (n >= 1 << 9) {
-            precisionIterationsPerInputType[i] = 5;
-        }
+        // if (n >= 1 << 11) {
+        precisionIterationsPerInputType[i] = 0;
+        // } else if (n >= 1 << 10) {
+        //     precisionIterationsPerInputType[i] = 1;
+        // } else if (n >= 1 << 9) {
+        //     precisionIterationsPerInputType[i] = 5;
+        // }
 
         flop_counts counts;
         bool sanityCheck = timeRun<T>(&timings[i * maxIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
