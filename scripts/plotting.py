@@ -249,13 +249,26 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
     all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
     plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
 
+    # Plot horizontal line for peak theoretical performance of machine
+    plt.axhline(y=52.22E3, color='#000000', linestyle='--')
+    plt.text(x=1800, y=52.22E3 - 2.2E3, s="FP32 peak", color='#000000', ha='center')
+
+    plt.axhline(y=104.4E3 / 3, color='#FF7F50', linestyle='--')
+    plt.text(x=1000, y=(104.4E3 / 3) - 2.2E3, s="FP16 w. FP32 acc. peak/3", color='#FF7F50', ha='center')
+
+    plt.axhline(y=104.4E3 / 4, color='#0022b8', linestyle='--')
+    plt.text(x=1000, y=(104.4E3 / 4) - 2.2E3, s="FP16 w. FP32 acc. peak/4", color='#0022b8', ha='center')
+
 
     # Compute performance for each run
     for i in range(len(data)):
         d = data[i]
         runs = d['runs']
-
-        matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["matmul"] for run in runs]
+        matmul_fractions = []
+        if d['meta']['function name'] != "cuBLAS":
+            matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["split & matmul & merge"] for run in runs]
+        else:
+            matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["matmul"] for run in runs]
         sizes = [run['N'] for run in runs] # Only use square matrices for now
         metrics = [compute_metrics(run['timings']) for run in runs]
         median_timings = [metric[0] for metric in metrics]
@@ -274,11 +287,6 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
             label += f" {d['meta']['flags']}"
         plt.plot(sizes, performances, color=line_colors[i%len(line_colors)], label=label)
         plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
-
-    # Plot horizontal line for peak theoretical performance of machine
-    plt.axhline(y=48.7E3, color='#DE3163', linestyle='--')
-    plt.axhline(y=97.5E3/3, color='#FFBF00', linestyle='--')
-    plt.axhline(y=97.5E3/4, color='#FF7F50', linestyle='--')
 
     # Only show gpu if all data is from the same gpu
     title_suffix = ""
@@ -476,7 +484,7 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
 
     title_suffix = f" on {data['meta']['gpu model']}"
     plt.title("Profile of " + data['meta']['function name'] + title_suffix, loc='left', fontsize=12, fontweight='bold', x=0, y=1.05)
-    plt.legend()
+    #plt.legend()
     plt.gca().set_ylim(bottom=0)
     output_dir = input_folder
     output_file = f"{plot_filename}_profile.png"
@@ -496,7 +504,9 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
         plot_filename: Plot will be saved as plot_filename_profile.png
     """
     num_plots = len(data)
-    fig, axes = plt.subplots(1, num_plots, figsize=(num_plots * 5, 5), sharey=True)
+    width_in_inches = 6.77*2  # Two-column width of A4 in inches
+    height_per_plot = 2*2     # Approximate height per subplot in inches
+    fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=True)
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
 
     if num_plots == 1:
@@ -527,30 +537,37 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
 
         # Customize subplot
         # Remove all borders except bottom
-        plt.gca().spines['top'].set_visible(False)
-        plt.gca().spines['right'].set_visible(False)
-        plt.gca().spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
 
         # Add horizontal lines
         ax.grid(axis='y', color='white', linestyle='-')
 
         ax.set_xscale('log', base=2)
         ax.set_title(dataset['meta']['function name'], fontsize=10, fontweight='bold')
+        ax.set_title(dataset['meta']['function name'], fontsize=12, fontweight='bold')
         ax.set_xticks(sizes)
         ax.set_xlim(min(sizes), max(sizes))  # Ensure xticks span full width of plot
         ax.set_xlabel(".", color=(0,0,0,0)) # invisible x-axis label to keep space
         if idx == 0:
             ax.set_ylabel("Fraction of total runtime")
         ax.set_ylim(0, 1)
+        #ax.legend()
 
-    fig.text(0.5, 0.04, 'Matrix size m : matmul-(m,m,m)', ha='center')
+    all_labels = [("allocate", line_colors[4]), ("memcpy host2device", line_colors[3]), ("matmul (+ split & merge)", line_colors[2]), ("memcpy device2host", line_colors[1]), ("free", line_colors[0])]
+
+     # Add a common legend below the x-axis label
+    handles = [plt.Line2D([0], [0], color=color, lw=6, label=label) for label, color in all_labels]
+
+    fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, 0.05), ncol=len(all_labels), fontsize=10)
+    fig.text(0.5, 0.15, 'Matrix size m : matmul-(m,m,m)', ha='center')
 
     # Add a common legend
     #handles, labels = axes[0].get_legend_handles_labels()
     #fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.5), ncol=len(profile_data[0].keys()), fontsize=10)
 
     # Adjust layout
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.1, 1, 1])
 
     # Save the figure
     output_dir = input_folder
