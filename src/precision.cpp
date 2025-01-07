@@ -34,15 +34,52 @@ double rel_residual(T *result, T *reference, int n) {
     return (double) (sqrt(sqr_sum_err / sqr_sum_ref));
 }
 
+template<class T>
+double capped_rel_err(T *result, T *reference, int n) {
+    // Smallest type 4 float squared
+    const __float80 EPS = (__float80) construct_double(false, -200, 0);
+
+    const __float80 ONE = 1.0;
+    __float80 sum_rel_err = 0.0;
+    for(int i = 0; i < n; i++) {
+        __float80 ref = (__float80) reference[i];
+        __float80 err = ref - ((__float80) result[i]);
+
+        __float80 rel_err;
+        // Check this way so NAN enters the fallback branch
+        if (!(abs(ref) > EPS)) {
+            rel_err = abs(err / EPS);
+        } else {
+            rel_err = abs(err / ref);
+        }
+        // Check this way so NAN enters the fallback branch
+        if (!(rel_err >= 0) || !(rel_err <= 1)) {
+            rel_err = ONE;
+        }
+        sum_rel_err += rel_err;
+    }
+
+    __float80 inv_n = ONE / ((__float80) n);
+    double res = (double) (inv_n * sum_rel_err);
+    if (!isfinite(res)) {
+        printf("Warning: non-finite precision metric!\n");
+    }
+    return res;
+}
+
 template double frobenius_norm<float>(float *result, int n);
 template double frobenius_norm<double>(double *result, int n);
 template double abs_residual<float>(float *result, float *reference, int n);
 template double abs_residual<double>(double *result, double *reference, int n);
 template double rel_residual<float>(float *result, float *reference, int n);
 template double rel_residual<double>(double *result, double *reference, int n);
+template double capped_rel_err<float>(float *result, float *reference, int n);
+template double capped_rel_err<double>(double *result, double *reference, int n);
 
 template<class T>
 void calc_precision_metrics(T *result, T *reference, int n, double *metrics) {
+    // Smallest type 4 float squared
+    const __float80 EPS = (__float80) construct_double(false, -200, 0);
     __float80 sum_abs_ref = 0.0;
     __float80 sum_abs_err = 0.0;
 
@@ -61,7 +98,7 @@ void calc_precision_metrics(T *result, T *reference, int n, double *metrics) {
         __float80 ref = (__float80) reference[i];
 
         __float80 abs_err = abs(ref - res);
-        __float80 rel_err = abs_err / abs(ref);
+        __float80 rel_err = abs_err / std::max(abs(ref), EPS);
         __float80 rel_err_max = abs_err / std::max(abs(ref), abs(res));
         __float80 rel_err_adj = abs_err / std::max(abs(ref + ref - res), abs(res));
         __float80 rel_err_min1 = std::min(rel_err, (__float80) 1.0);

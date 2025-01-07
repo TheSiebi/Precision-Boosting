@@ -56,8 +56,8 @@ struct run
 {
     // Matrix dimensions
     size_t M;
-    size_t N;
     size_t K;
+    size_t N;
     // Actually executed flops per precision (fp16 means on tensor core)
     size_t flops16;
     size_t flops32;

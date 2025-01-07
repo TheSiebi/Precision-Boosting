@@ -137,7 +137,7 @@ def generate_speedup_plot(data: dict, input_folder: str):
         d = data[i]
         runs = d['runs']
         median_timings = [compute_metrics(run['timings'], True)[0] for run in runs]
-        sizes = [run['N'] for run in runs] # Assume square matrices only for now
+        sizes = [run['K'] for run in runs] # Assume square matrices only for now (or assume M = N = 16)
         gflops = [run['math_flops']/1E9 for run in runs] # disregard different flop types
         performances = [gflops[i] / median_timings[i] for i in range(len(runs))]
         all_performances.append(performances)
@@ -196,7 +196,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
     plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
-    all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+    all_sizes = list(set([size for d in data for size in [run['K'] for run in d['runs']]])) # Assuming square matrices (or M = N = 16)
     plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
 
     # Compute performance for each run
@@ -212,7 +212,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
         ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
         ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
 
-        sizes = [run['N'] for run in runs] # Only use square matrices for now
+        sizes = [run['K'] for run in runs] # Only use square matrices for now (or assume M = N = 16)
         label = d['meta']['function name']
         # Add compiler info if contained in data
         if 'compiler' in d['meta']:
@@ -238,16 +238,7 @@ def generate_performance_comparison_plot(data: List[dict], input_folder: str):
     plt.close()
 
 def generate_precision_comparison_plot_all(data: List[dict], input_folder: str):
-    generate_precision_comparison_plot(data, input_folder, 'residual', 'Relative Frobenius Residual')
-    generate_precision_comparison_plot(data, input_folder, 'residual_l1', 'Relative Absolute Residual')
-    generate_precision_comparison_plot(data, input_folder, 'mean_abs_err', 'Mean Absolute Error')
-    generate_precision_comparison_plot(data, input_folder, 'mean_sqr_err', 'Mean Squared Error')
-    generate_precision_comparison_plot(data, input_folder, 'mean_rel_err', 'Mean Relative Error')
-    generate_precision_comparison_plot(data, input_folder, 'mean_rel_sqr', 'Mean Relative Squared Error')
-    generate_precision_comparison_plot(data, input_folder, 'mean_rel_max', 'Mean Relative Error (Max\' equation)')
-    generate_precision_comparison_plot(data, input_folder, 'mean_rel_adj', 'Mean Relative Error (Tynan\'s equation)')
-    generate_precision_comparison_plot(data, input_folder, 'mean_rel_min1', 'Mean Relative Error (Capped at 1)')
-    generate_precision_comparison_plot(data, input_folder, 'mean_log_err', 'Mean Logarithmic Error')
+    generate_precision_comparison_plot(data, input_folder, 'residuals', 'Mean Relative Error (Capped at 1)')
 
 def generate_precision_comparison_plot(data: List[dict], input_folder: str, metric_key: str, metric_name: str):
     """
@@ -267,7 +258,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str, metr
         #line_colors = ['#c28e0d', '#903315', '#6b1a1f', '#5e331e', '#341a09', '#52236a']
         line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED']
         plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
-        all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+        all_sizes = list(set([size for d in data for size in [run['K'] for run in d['runs']]])) # Assuming M=N=16
         plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
 
         for i in range(len(data)):
@@ -285,7 +276,7 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str, metr
             ci_lower_bounds = [metric[4] for metric in metrics]
             ci_upper_bounds = [metric[5] for metric in metrics]
 
-            sizes = [run['N'] for run in runs]
+            sizes = [run['K'] for run in runs]
             label = d['meta']['function name']
             # Add compiler info if contained in data
             if 'compiler' in d['meta']:
@@ -387,7 +378,7 @@ def generate_profile_plot(data: dict, input_folder: str, plot_filename: str):
     # Get profile data
     runs = data['runs']
     sample_counts = [len(run['timings']) for run in runs]
-    sizes = [run['N'] for run in runs] # Only use square matrices for now
+    sizes = [run['K'] for run in runs] # Only use square matrices for now (Or assume M = N = 16)
     profile_data = [parse_profile_text(run['profile_output']) for run in runs]
 
     # Normalize profile data to values between 0 and 1
@@ -447,7 +438,7 @@ def generate_performance_plot(data: dict, input_folder: str, plot_filename: str)
     ci_lower_perf = [gflops[i] / ci_upper[i] for i in range(len(runs))]
     ci_upper_perf = [gflops[i] / ci_lower[i] for i in range(len(runs))]
 
-    sizes = [run['N'] for run in runs] # Only use square matrices for now
+    sizes = [run['K'] for run in runs] # Only use square matrices for now (or assume M = N = 16)
 
     plt.fill_between(sizes, ci_lower_perf, ci_upper_perf, color='lightgrey', alpha=0.5, label='95% Confidence Interval')
 

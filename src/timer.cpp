@@ -31,40 +31,14 @@ cJSON* measurement_configuration_to_json(struct measurementConfiguration *conf) 
     return json;
 }
 
-std::string metricName(int metricIdx) {
-    switch (metricIdx) {
-        default: return "unknown";
-        case 0: return "residual";
-        case 1: return "residual_l1";
-        case 2: return "mean_abs_err";
-        case 3: return "mean_sqr_err";
-        case 4: return "mean_rel_err";
-        case 5: return "mean_rel_sqr";
-        case 6: return "mean_rel_max";
-        case 7: return "mean_rel_adj";
-        case 8: return "mean_rel_min1";
-        case 9: return "mean_log_err";
-    }
-}
 cJSON* prec_measurement_to_json(struct precisionMeasurement *m, int precisionIterations) {
     cJSON *m_json = cJSON_CreateObject();
     if (!m_json) return NULL;
 
     cJSON_AddNumberToObject(m_json, "input_type", m->input_type);
 
-    double *metric_values = (double*) calloc(precisionIterations, sizeof(*metric_values));
-    for (size_t metric = 0; metric < NUM_METRICS; metric++) {
-        for (size_t i = 0; i < precisionIterations; i++) {
-            double value = m->residuals[(NUM_METRICS * i) + metric];
-            if (isfinite(value)) {
-                printf("Warning: Non-finite value in precision results!\n");
-            }
-            metric_values[i] = m->residuals[(NUM_METRICS * i) + metric];
-        }
-
-        cJSON *residuals_array = cJSON_CreateDoubleArray(metric_values, precisionIterations);
-        cJSON_AddItemToObject(m_json, metricName(metric).c_str(), residuals_array);
-    }
+    cJSON *residuals_array = cJSON_CreateDoubleArray(m->residuals, precisionIterations);
+    cJSON_AddItemToObject(m_json, "residuals", residuals_array);
 
     return m_json;
 }
@@ -230,7 +204,8 @@ void measurePrecision(int input_type, double *residuals, int iterations, size_t 
         func(A, B, C, M, K, N);        
 
         // Measure error
-        calc_precision_metrics(C, C_ref, M * N, &residuals[i * NUM_METRICS]);
+        double precision_metric = capped_rel_err(C, C_ref, M * N);
+        residuals[i] = precision_metric;
     }
 
     printf("\r%*s\r", 100, ""); // clear iteration progress line
@@ -249,13 +224,13 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 8;
+    int powerOfMaxSize = 20;
     int powerOfMinSize = 4;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
     const int numInputTypes = 5;
     const int maxPerfIterationsPerConfig = 1;
-    const int maxPrecIterationsPerConfig = 3 * numInputTypes;
+    const int maxPrecIterationsPerConfig = 256 * numInputTypes;
     const int maxIterationsPerInputType = maxPrecIterationsPerConfig / numInputTypes;
     int *iterationsPerConfig = (int*) calloc(numSizes, sizeof(*iterationsPerConfig));
     int *precisionIterationsPerInputType = (int*) calloc(numSizes, sizeof(*precisionIterationsPerInputType));
@@ -268,37 +243,38 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     };
 
     double *timings = (double*) calloc(numSizes * maxPerfIterationsPerConfig, sizeof(*timings));
-    double *residuals = (double*) calloc(numSizes * numInputTypes * maxIterationsPerInputType * NUM_METRICS, sizeof(*residuals));
+    double *residuals = (double*) calloc(numSizes * numInputTypes * maxIterationsPerInputType, sizeof(*residuals));
     struct run *runs = (struct run*)calloc(numSizes, sizeof(*runs));
     struct precisionMeasurement *ms = (struct precisionMeasurement*) calloc(numSizes * numInputTypes, sizeof(*ms));
     for (int i = 0; i < numSizes; i++)
     {
         size_t n = 1 << (i + powerOfMinSize);
-        // size_t M = 16;
-        // size_t K = n;
-        // size_t N = 16;
+        size_t M = 16;
+        size_t K = n;
+        size_t N = 16;
+        size_t total_pow = (i + powerOfMinSize + 4 + 4);
 
         // Adapt number of iterations based on heuristics on runtime
         iterationsPerConfig[i] = maxPerfIterationsPerConfig;
         precisionIterationsPerInputType[i] = maxIterationsPerInputType;
 
-        if (n >= 1 << 13) {
+        if (total_pow >= 39) {
             iterationsPerConfig[i] = std::min(1, maxPerfIterationsPerConfig);
-        } else if (n >= 1 << 12) {
+        } else if (total_pow >= 36) {
             iterationsPerConfig[i] = std::min(5, maxPerfIterationsPerConfig);
         }
-        if (n >= 1 << 13) {
+        if (total_pow >= 39) {
             precisionIterationsPerInputType[i] = std::min(0, maxIterationsPerInputType);
-        } else if (n >= 1 << 12) {
+        } else if (total_pow >= 36) {
             precisionIterationsPerInputType[i] = std::min(8, maxIterationsPerInputType);
-        } else if (n >= 1 << 11) {
+        } else if (total_pow >= 33) {
             precisionIterationsPerInputType[i] = std::min(64, maxIterationsPerInputType);
-        } else if (n >= 1 << 10) {
+        } else if (total_pow >= 30) {
             precisionIterationsPerInputType[i] = std::min(1024, maxIterationsPerInputType);
         }
 
         flop_counts counts;
-        bool sanityCheck = timeRun<T>(&timings[i * maxPerfIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, n, n, n, function->function, rng);
+        bool sanityCheck = timeRun<T>(&timings[i * maxPerfIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, M, K, N, function->function, rng);
         
         char* profile_output = profiler_segments_print_json();
         size_t len = strlen(profile_output);
@@ -307,8 +283,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
 
         int m_idx = i * numInputTypes;
         for (int input_type = 0; input_type < numInputTypes; input_type++) {
-            double *residuals_idx = &residuals[(i * numInputTypes + input_type) * maxIterationsPerInputType * NUM_METRICS];
-            measurePrecision<T>(input_type, residuals_idx, precisionIterationsPerInputType[i], n, n, n, function->function, rng);
+            double *residuals_idx = &residuals[(i * numInputTypes + input_type) * maxIterationsPerInputType];
+            measurePrecision<T>(input_type, residuals_idx, precisionIterationsPerInputType[i], M, K, N, function->function, rng);
             struct precisionMeasurement m = {
                 .input_type = input_type,
                 .residuals = residuals_idx,
@@ -317,13 +293,13 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         }
 
         struct run run = {
-            .M = n,
-            .N = n,
-            .K = n,
+            .M = M,
+            .K = K,
+            .N = N,
             .flops16 = counts.flops16,
             .flops32 = counts.flops32,
             .flops64 = counts.flops64,
-            .math_flops = 2L*n*n*n,
+            .math_flops = 2L*M*K*N,
             .timings = &timings[i * maxPerfIterationsPerConfig],
             .profile_output = local_copy,
             .sanity_check = sanityCheck,
