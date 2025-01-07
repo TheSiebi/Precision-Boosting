@@ -305,8 +305,9 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
     plt.close()
 
 def generate_precision_comparison_plot(data: List[dict], input_folder: str):
+def generate_precision_plots(data: List[dict], input_folder: str):
     """
-    Generate precision comparison plot and save it at timings/input_folder/
+    Generates a precision plot for each input type and save it at timings/input_folder/
 
     Args:
         data: JSON data containing precision information
@@ -360,6 +361,104 @@ def generate_precision_comparison_plot(data: List[dict], input_folder: str):
         plt.savefig(os.path.join(output_dir, output_file))
         plt.savefig(os.path.join(output_dir, f"prec_comparison_type_{str(input_type)}.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
         plt.close()
+
+
+def generate_precision_comparison_plot(data: List[dict], input_folder: str):
+    """
+    Generates a row of precision comparison plots and saves it at timings/input_folder/
+
+    Args:
+        data: JSON data containing precision information
+        input_folder: Name of input folder at timings
+    """
+    unique_input_types = set([m['input_type'] for d in data for run in d['runs'] if 'precMs' in run for m in run['precMs']])
+
+    # Remove Type 0 from comparison plot
+    unique_input_types.remove(0)
+
+    num_plots = len(unique_input_types)
+    width_in_inches = 6.77*2  # Two-column width of A4 in inches
+    height_per_plot = 2*2     # Approximate height per subplot in inches
+    fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=False)
+    line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
+
+    if num_plots == 1:
+        axes = [axes]  # Ensure axes is iterable even for a single plot
+
+    handles = []
+    labels = []
+    # Compute performance for each run
+    for idx, input_type in enumerate(unique_input_types):
+        ax = axes[idx]
+        # Customize subplot
+        # Set background color to light gray
+        ax.set_facecolor('0.95')
+
+        # Add horizontal lines
+        ax.grid(axis='y', color='white', linestyle='-')
+        # Remove all borders except bottom
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+        # Add horizontal lines
+        ax.grid(axis='y', color='white', linestyle='-')
+
+        ax.set_xscale('log', base=2)
+        ax.set_title("Type " + str(input_type))
+        ax.set_xlabel(".", color=(0,0,0,0)) # invisible x-axis label to keep space
+        if idx == 0:
+            ax.set_ylabel("Mean Relative Error (Capped at 1)")
+        ax.set_yscale('log', base=10)
+        ax.set_xlabel(".", color=(0,0,0,0)) # invisible x-axis label to keep space
+
+        # -- Comparison Plot specific setup --
+        line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
+        ax.set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
+        #all_sizes = list(set([size for d in data for run in d['runs'] if 'precMs' in run for size in [run['N']]])) # Assuming square matrices
+
+        for i in range(len(data)):
+            d = data[i]
+            runs = [run for run in d['runs'] if 'precMs' in run]
+            
+            # If no runs have 'precMs', skip
+            if not runs:
+                continue
+            
+            all_run_residuals = [m['residuals'] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
+
+            avg_residual = [np.mean(np.array(run_residual)) for run_residual in all_run_residuals]
+            sizes = [run['N'] for run in runs]
+            residuals = [avg_residual[i] for i in range(len(runs))]
+            label = d['meta']['function name']
+            # Add compiler info if contained in data
+            if 'compiler' in d['meta']:
+                label += f" ({d['meta']['compiler']})"
+            if 'flags' in d['meta']:
+                label += f" {d['meta']['flags']}"
+            p, = ax.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
+            if idx == 0:
+                handles.append(p)
+                labels.append(label)
+
+        #ax.legend()
+
+    # Add a common legend below the x-axis label
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.05), ncols=len(labels), fontsize=10)
+    fig.text(0.5, 0.15, 'Matrix size m : matmul-(16,m,16)', ha='center')
+    # Add a common legend
+    #handles, labels = axes[0].get_legend_handles_labels()
+    #fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.5), ncol=len(profile_data[0].keys()), fontsize=10)
+
+    # Adjust layout
+    plt.tight_layout(rect=[0, 0.1, 1, 1])
+
+    output_dir = input_folder
+    output_file = "precision_comparison.png"
+    print(output_dir)
+    plt.savefig(os.path.join(output_dir, output_file))
+    plt.savefig(os.path.join(output_dir, "precision_comparison.pdf"), dpi=300, pad_inches=0, bbox_inches='tight') # PDF version
+    plt.close()
 
 
 # def plot_histogram_qq_grid(runs, input_folder, file_prefix, num_rows=3):
@@ -544,7 +643,6 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
         ax.grid(axis='y', color='white', linestyle='-')
 
         ax.set_xscale('log', base=2)
-        ax.set_title(dataset['meta']['function name'], fontsize=10, fontweight='bold')
         ax.set_title(dataset['meta']['function name'], fontsize=12, fontweight='bold')
         ax.set_xticks(sizes)
         ax.set_xlim(min(sizes), max(sizes))  # Ensure xticks span full width of plot
@@ -635,6 +733,7 @@ def main():
     parser.add_argument('--profile', action='store_true', help='Flag to generate profile plot.')
     parser.add_argument('--compare-profile', action='store_true', help='Flag to generate profile comparison plot.')
     parser.add_argument('--compare-matmul', action='store_true', help='Flag to only consider matmul segments for comparison plot.')
+    parser.add_argument('--compare-precision', action='store_true', help='Flag to generate precision comparison plot.')
     args = parser.parse_args()
 
     rcParams['font.sans-serif'] = ['Tahoma', 'Verdana', 'Gill Sans MT', 'Calibri', 'DejaVu Sans']
@@ -655,14 +754,17 @@ def main():
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_speedup_plot(json_data, args.input_folder)
         elif args.precision:
-            json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
-            generate_precision_comparison_plot(json_data, args.input_folder)
+            json_data = [load_json(os.path.join(input_folder, file)) for file in os.listdir(input_folder) if file.endswith('.json')]
+            generate_precision_plots(json_data, args.input_folder)
         elif args.compare_matmul:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_matmul_performance_comparison_plot(json_data, args.input_folder)
         elif args.compare_profile:
             json_data = [load_json(os.path.join(input_folder, file)) for file in sorted(os.listdir(input_folder)) if file.endswith('.json')]
             generate_profile_comparison_plot(json_data, args.input_folder)
+        elif args.compare_precision:
+            json_data = [load_json(os.path.join(input_folder, file)) for file in os.listdir(input_folder) if file.endswith('.json')]
+            generate_precision_comparison_plot(json_data, args.input_folder)
         elif args.profile:
             for file in os.listdir(input_folder):
                 if file.endswith('.json'):
