@@ -86,12 +86,14 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
                (deviceBFull + offsetB, deviceB[0] + offsetB, deviceB[1] + offsetB, scale);
     }
     PRINT_ON_ERROR(cudaGetLastError());
+    CUDA_DEVICE_SYNCHRONIZE();
 
     for(int i = 0; i < 4; i++)
     {
         matmulTensorCores<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
     }
 
+    CUDA_DEVICE_SYNCHRONIZE();
     merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
               (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], scale);
     PRINT_ON_ERROR(cudaGetLastError());
@@ -183,7 +185,7 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     assert((K % 16) == 0);
     assert((N % 16) == 0);
 
-    PROFILE_FUNCTION_SEGMENT_START("allocate cpu");
+    PROFILE_FUNCTION_SEGMENT_START("allocate");
 
     size_t ASizeS = M * K * sizeof(mulInputType);
     size_t ASize = M * K * sizeof(T);
@@ -191,8 +193,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     size_t BSize = K * N * sizeof(T);
     size_t CSizeO = M * N * sizeof(mulOutputType);
     size_t CSize = M * N * sizeof(T);
-    
-    PROFILE_SEGMENTS_SWITCH("allocate gpu");
 
     mulInputType *deviceA, *deviceB;
     mulOutputType *deviceC;
@@ -212,7 +212,7 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
 
     using maskType = typename std::conditional<sizeof(mulInputType) >= sizeof(uint32_t), uint32_t, uint16_t>::type;
-    PROFILE_SEGMENTS_SWITCH("split");
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
 
     split_n_cuda<splitCount, T, mulInputType, maskType><<<DivRoundUp(M*K, 256), 256>>>(deviceAFull, deviceA, M * K, scale, mask);
     PRINT_ON_ERROR(cudaGetLastError());
@@ -221,7 +221,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
 
     CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("matmul");
     for(int i = 0; i < mergeCount; i++)
     {
         size_t aIndex = mergePattern[i].first * M * K;
@@ -262,7 +261,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     }
     CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("merge");
     merge_n_cuda<mergeCount, mulOutputType, T><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();

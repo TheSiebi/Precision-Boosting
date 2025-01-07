@@ -595,6 +595,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
             ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
     }
 
+    CUDA_DEVICE_SYNCHRONIZE();
     cudaStream_t streams[mergeCount];
     for(int i = 0; i < mergeCount; i++)
         PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
@@ -606,6 +607,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
     }
 
+    CUDA_DEVICE_SYNCHRONIZE();
     merge_n_cuda<mergeCount, mulOutputType, T><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();
