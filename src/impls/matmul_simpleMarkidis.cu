@@ -93,7 +93,6 @@ flop_counts matmul_simpleMarkidis(float *A, float *B, float *C, size_t M, size_t
         matmulTensorCores<half, float, version>(deviceA[i/2], deviceB[i%2], deviceC[i], M, K, N);
     }
 
-    CUDA_DEVICE_SYNCHRONIZE();
     merge_2<float, float, true><<<DivRoundUp(M*N, 256), 256>>>
               (deviceCMerged, deviceC[0], deviceC[1], deviceC[2], deviceC[3], scale);
     PRINT_ON_ERROR(cudaGetLastError());
@@ -219,8 +218,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
     split_n_cuda<splitCount, T, mulInputType, maskType><<<DivRoundUp(K*N, 256), 256>>>(deviceBFull, deviceB, K * N, scale, mask);
     PRINT_ON_ERROR(cudaGetLastError());
 
-    CUDA_DEVICE_SYNCHRONIZE();
-
     for(int i = 0; i < mergeCount; i++)
     {
         size_t aIndex = mergePattern[i].first * M * K;
@@ -259,7 +256,6 @@ flop_counts matmul_Markidis(T *A, T *B, T *C, size_t M, size_t K, size_t N,
         if (factor > 1.0)
             divide_cuda<mulOutputType><<<DivRoundUp(M*N, 256), 256>>>(deviceC + cIndex, M*N, factor);
     }
-    CUDA_DEVICE_SYNCHRONIZE();
 
     merge_n_cuda<mergeCount, mulOutputType, T><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
