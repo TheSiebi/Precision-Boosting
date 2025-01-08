@@ -304,13 +304,13 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_ozaki<12>,
         .name = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
-        .description = "Ozaki v12 FP32->FP64, 4spl 16mm, cuBLAS",
+        .description = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
         .highestPerforming = true,
     },
     {
         .function = matmul_ozaki<13>,
         .name = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
-        .description = "Ozaki v13 FP32->FP64, 5spl 25mm, cuBLAS",
+        .description = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
         .highestPerforming = true,
     },
     {
