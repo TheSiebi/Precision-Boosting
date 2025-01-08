@@ -154,7 +154,9 @@ template flop_counts matmul_simpleMarkidis<5, 1, false>(float *A, float *B, floa
 template flop_counts matmul_simpleMarkidis<5, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 #if SM_VERSION >= 800
 template flop_counts matmul_simpleMarkidis<6, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<6, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 template flop_counts matmul_simpleMarkidis<7, 1, true>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+template flop_counts matmul_simpleMarkidis<7, 1, false>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 #endif
 
 

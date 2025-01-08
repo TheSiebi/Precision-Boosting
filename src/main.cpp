@@ -262,7 +262,7 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_ozaki<5>,
         .name = "Matmul Ozaki float 36 terms",
-        .description = "Ozaki FP64 using FP32 7 splits and 36 matmuls",
+        .description = "Ozaki FP64 using FP32 6 splits and 36 matmuls",
         .highestPerforming = true,
     },
     {
@@ -293,25 +293,25 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_ozaki<10>,
         .name = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
         .description = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_ozaki<11>,
         .name = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
         .description = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_ozaki<12>,
         .name = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
         .description = "Ozaki v12 FP32->FP64, 4spl 16mm, cuBLAS",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_ozaki<13>,
         .name = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
         .description = "Ozaki v13 FP32->FP64, 5spl 25mm, cuBLAS",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_Ootomo_double_v0,
