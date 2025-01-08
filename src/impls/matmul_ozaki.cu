@@ -519,7 +519,11 @@ template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, size_t m, 
 template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 template flop_counts matmul_ozaki<2>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 
-template<int splitCount, int mergeCount, typename T, typename mulInputType, typename mulType, typename mulOutputType>
+// multKernel:
+// 0: matmulCUDACoresStream
+// 1: cuBLAS
+// 2: Ootomo
+template<int splitCount, int mergeCount, int multKernel, typename T, typename mulInputType, typename mulType, typename mulOutputType>
 flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t N,
                                    std::pair<int, int> mergePattern[mergeCount], bool transpose)
 {
@@ -604,7 +608,21 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         size_t aIndex = mergePattern[i].first * M * K;
         size_t bIndex = mergePattern[i].second * K * N;
         size_t cIndex = i * M * N;
-        matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
+        if constexpr (multKernel == 0)
+            matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
+        else if constexpr (multKernel == 1)
+        {
+            if constexpr (std::is_same<half, mulInputType>::value && std::is_same<float, mulOutputType>::value)
+                matmul_cuBLASMixed(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+            else if constexpr (std::is_same<float, mulOutputType>::value && std::is_same<float, mulOutputType>::value)
+                matmul_cuBLAS32(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+            else
+                throw std::runtime_error("Unsupported input/output types for cuBLAS kernel (Ozaki)");
+        }
+        else if constexpr (multKernel == 2 && std::is_same<float, mulInputType>::value && std::is_same<float, mulOutputType>::value)
+            matmul_Ootomo_v3(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+        else
+            throw std::runtime_error("Ozaki: invalid parameters");
     }
 
     CUDA_DEVICE_SYNCHRONIZE();
@@ -656,7 +674,7 @@ flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, merges, false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -668,7 +686,7 @@ flop_counts matmul_ozaki<4>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, merges, false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -681,7 +699,7 @@ flop_counts matmul_ozaki<5>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -694,7 +712,7 @@ flop_counts matmul_ozaki<6>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 
@@ -708,7 +726,7 @@ flop_counts matmul_ozaki<7>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -721,7 +739,7 @@ flop_counts matmul_ozaki<8>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -734,7 +752,55 @@ flop_counts matmul_ozaki<9>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+}
+
+template<>
+flop_counts matmul_ozaki<10>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 1, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<11>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 1, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<12>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 2, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<13>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 2, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -747,7 +813,7 @@ flop_counts matmul_ozaki_float<0>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -760,7 +826,7 @@ flop_counts matmul_ozaki_float<1>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -773,5 +839,5 @@ flop_counts matmul_ozaki_float<2>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, half, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, half, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }

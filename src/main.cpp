@@ -290,6 +290,30 @@ matmul_variant<double> matmulVariants64[] =
         .highestPerforming = false,
     },
     {
+        .function = matmul_ozaki<10>,
+        .name = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
+        .description = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<11>,
+        .name = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
+        .description = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<12>,
+        .name = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
+        .description = "Ozaki v12 FP32->FP64, 4spl 16mm, cuBLAS",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<13>,
+        .name = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
+        .description = "Ozaki v13 FP32->FP64, 5spl 25mm, cuBLAS",
+        .highestPerforming = false,
+    },
+    {
         .function = matmul_Ootomo_double_v0,
         .name = "Ootomo double v0",
         .description = "Use external split to partition double into 4 float multiplications. Perform this 4 float multiplications with fp32 Ootomo. Merge the 4 results.",
