@@ -224,7 +224,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 20;
+    int powerOfMaxSize = 19;
     int powerOfMinSize = 4;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
@@ -258,18 +258,18 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         iterationsPerConfig[i] = maxPerfIterationsPerConfig;
         precisionIterationsPerInputType[i] = maxIterationsPerInputType;
 
-        if (total_pow >= 39) {
+        if (total_pow >= 36) {
             iterationsPerConfig[i] = std::min(1, maxPerfIterationsPerConfig);
-        } else if (total_pow >= 36) {
+        } else if (total_pow >= 33) {
             iterationsPerConfig[i] = std::min(5, maxPerfIterationsPerConfig);
         }
-        if (total_pow >= 39) {
+        if (total_pow >= 36) {
             precisionIterationsPerInputType[i] = std::min(0, maxIterationsPerInputType);
-        } else if (total_pow >= 36) {
-            precisionIterationsPerInputType[i] = std::min(8, maxIterationsPerInputType);
         } else if (total_pow >= 33) {
-            precisionIterationsPerInputType[i] = std::min(64, maxIterationsPerInputType);
+            precisionIterationsPerInputType[i] = std::min(8, maxIterationsPerInputType);
         } else if (total_pow >= 30) {
+            precisionIterationsPerInputType[i] = std::min(64, maxIterationsPerInputType);
+        } else if (total_pow >= 27) {
             precisionIterationsPerInputType[i] = std::min(1024, maxIterationsPerInputType);
         }
 
