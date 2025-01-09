@@ -446,26 +446,27 @@ void ozaki_split_to_half_fixed_cuda(T* A, half* ASplit, const size_t M, const si
     }
 }
 
-template<int splitCount>
+template<int splitCount, int threadCount>
 static __global__
 void ozaki_split_to_float_fixed_cuda(double* A, float* ASplit, const size_t M, const size_t N, const float beta)
 {
     const int warpIndex = threadIdx.x;
     const int scalar_AOffset = blockIdx.x * N;
+    const unsigned int shflMask = threadCount == 32 ? 0xffffffff : 0x0000ffff;
 
     double mu = 0;
-    for(size_t j = 0; j < N; j+=WARP_SIZE)
+    for(size_t j = 0; j < N; j+=threadCount)
         mu = max(mu, abs(A[scalar_AOffset+j+warpIndex]));
 
     for(int k = 0; k < splitCount-1; k++)
     {
         //get max mu accross all threads in warp
-        for(int i = 16; i >= 1; i/=2)
-            mu = max(mu, __shfl_xor_sync(0xffffffff, mu, i, 32));
+        for(int i = threadCount / 2; i >= 1; i/=2)
+            mu = max(mu, __shfl_xor_sync(shflMask, mu, i, threadCount));
         float w = exp2f(ceilf(log2f(mu)) + beta);
 
         mu = 0;
-        for(size_t j = 0; j < N; j+=WARP_SIZE)
+        for(size_t j = 0; j < N; j+=threadCount)
         {
             size_t ij = scalar_AOffset+j+warpIndex;
             float value = (float)(A[ij] + (double)w) - w;
@@ -476,7 +477,7 @@ void ozaki_split_to_float_fixed_cuda(double* A, float* ASplit, const size_t M, c
         }
     }
 
-    for (size_t j = 0; j < N; j+=WARP_SIZE)
+    for (size_t j = 0; j < N; j+=threadCount)
     {
         size_t ij = scalar_AOffset+j+warpIndex;
         ASplit[(splitCount-1)*M*N + ij] = (float) A[ij];
@@ -582,21 +583,32 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
     else
     {
         const float beta = ceilf((log2f(K) + 24) / 2.f);
-        ozaki_split_to_float_fixed_cuda<splitCount><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
+        if (K == 16)
+            ozaki_split_to_float_fixed_cuda<splitCount, 16><<<M, 16>>>(deviceAFull, deviceA, M, K, beta);
+        else
+            ozaki_split_to_float_fixed_cuda<splitCount, 32><<<M, 32>>>(deviceAFull, deviceA, M, K, beta);
         
         if (transpose)
         {
             dim3 blockDim(TRANSPOSE_TILE_DIM, TRANSPOSE_BLOCK_ROWS);
             dim3 gridDim(N / TRANSPOSE_TILE_DIM, K / TRANSPOSE_TILE_DIM);
             transpose_matrix<<<gridDim, blockDim>>>(deviceBFullTransposed, deviceBFull, K, N);
-            ozaki_split_to_float_fixed_cuda<splitCount><<<N, 32>>>(deviceBFullTransposed, deviceBTransposed, N, K, beta);
+            if (K == 16)
+                ozaki_split_to_float_fixed_cuda<splitCount, 16><<<N, 16>>>(deviceBFullTransposed, deviceBTransposed, N, K, beta);
+            else
+                ozaki_split_to_float_fixed_cuda<splitCount, 32><<<N, 32>>>(deviceBFullTransposed, deviceBTransposed, N, K, beta);
 
             dim3 gridDim1(K / TRANSPOSE_TILE_DIM, N / TRANSPOSE_TILE_DIM);
             for (int i = 0; i < splitCount; i++)
                 transpose_matrix<<<gridDim1, blockDim>>>(deviceB + i * BSizeF, deviceBTransposed + i * BSizeF, N, K);
         }
         else 
-            ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+        {
+            if (N == 16)
+                ozaki_split_to_float_fixed_cuda<splitCount, 16><<<K, 16>>>(deviceBFull, deviceB, K, N, beta);
+            else
+                ozaki_split_to_float_fixed_cuda<splitCount, 32><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
+        }     
     }
 
     CUDA_DEVICE_SYNCHRONIZE();
