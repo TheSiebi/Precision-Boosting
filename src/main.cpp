@@ -267,13 +267,13 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_ozaki<6>,
-        .name = "Matmul Ozaki float 10 terms",
+        .name = "Matmul Ozaki float, 4 split, 10 terms",
         .description = "Ozaki FP64 using FP32 4 splits and 10 matmuls",
         .highestPerforming = false,
     },
     {
         .function = matmul_ozaki<7>,
-        .name = "Matmul Ozaki float 20 terms",
+        .name = "Matmul Ozaki float, 5 split, 20 terms",
         .description = "Ozaki FP64 using FP32 5 splits and 20 matmuls",
         .highestPerforming = false,
     },
@@ -327,7 +327,7 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_simpleMarkidis_double<1>,
-        .name = "Hybrid double: 16 terms, float acc",
+        .name = "Markidis double: 16 terms, float acc",
         .description = "Split 4 half, 16 float multimply & accumulate (TENSOR CORES)",
         .highestPerforming = false,      
     },
@@ -339,19 +339,19 @@ matmul_variant<double> matmulVariants64[] =
     },
     {
         .function = matmul_simpleMarkidis_double<3>,
-        .name = "Hybrid double: 16 terms, double acc",
+        .name = "Markidis double: 16 terms, double acc",
         .description = "Split 4 half with scaling, 16 float multiply & double accumulate (CUDA CORES)",
         .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<4>,
-        .name = "Hybrid double: 25 terms, double acc",
+        .name = "Markidis double: 25 terms, double acc",
         .description = "Split 5 half with scaling, 25 float multiply & double accumulate (CUDA CORES)",
         .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<5>,
-        .name = "Hybrid double: 36 terms, double acc",
+        .name = "Markidis double: 36 terms, double acc",
         .description = "Split 6 half with scaling, 36 float multiply & double accumulate (CUDA CORES)",
         .highestPerforming = false,      
     },
