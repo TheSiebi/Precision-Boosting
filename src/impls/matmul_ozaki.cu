@@ -73,11 +73,14 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
     int k = 1;
 
     // beta = fl(...)
-    const float log2u = -11.f; // half precision
-    const float beta = ceilf((-log2u + log2f(q)) / 2.0);
+    const double log2u = -24.f; // half precision
+    const double beta = ceil((-log2u + log2(q)) / 2.0);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<__half>> D = { std::vector<__half>(m * n, static_cast<__half>(0.f)) };
+
+    // DEBUG
+    // printf("(in)   a: %s (%.25f)\n", fp64_binary_representation(a[0]).c_str(), a[0]);
 
     // while(k < l)
     while (k < l)
@@ -86,13 +89,13 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
         std::vector<double> mu(m, 0.0);
         for (size_t i = 0; i < m; ++i)
             for (size_t j = 0; j < q; ++j)
-                mu[i] = max(mu[i], abs(a[ix(i, j, m, q)]));
+                mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
-        double overalMax = 0.0;
+        double overall_max = 0.0;
         for (const auto mu_i: mu)
-            overalMax = max(overalMax, mu_i);
-        if (overalMax == 0.0)
+            overall_max = max(overall_max, mu_i);
+        if (overall_max == 0.0)
         {
             // printf("Early termination\n");
             return D;
@@ -124,6 +127,13 @@ std::vector<std::vector<__half>> ozaki_split_to_half(const size_t m, const size_
                 a[ij] -= static_cast<double>(value);
             }
         }
+
+        // DEBUG
+        // printf("k=%d.   w: %s (%.25f)\n", k, fp64_binary_representation(w[0]).c_str(), w[0]);
+        // printf("k=%d. max: %s (%.25f)\n", k, fp64_binary_representation(overall_max).c_str(), overall_max);
+        // printf("k=%d.   a: %s (%.25f)\n", k, fp64_binary_representation(a[0]).c_str(), a[0]);
+        // const auto Dkdouble = static_cast<double>(D[k-1][0]);
+        // printf("k=%d. D_k: %s (%.25f)\n", k, fp64_binary_representation(Dkdouble).c_str(), Dkdouble);
 
 
         // % Checking sparsity of D{k}
@@ -164,11 +174,14 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
     int k = 1;
 
     // beta = fl(...)
-    const float log2u = -24.f;
-    const float beta = ceilf((-log2u + log2f(q)) / 2.f);
+    const double log2u = -24.0;
+    const double beta = ceil((-log2u + log2(q)) / 2.0);
 
     // D{1} = zeros(size(A));
     std::vector<std::vector<float>> D = { std::vector<float>(m * n, 0.f) };
+
+    // DEBUG
+    // printf("(in)   a: %s (%.25f)\n", fp64_binary_representation(a[0]).c_str(), a[0]);
 
     // while(k < l)
     while (k < l)
@@ -180,35 +193,47 @@ std::vector<std::vector<float>> ozaki_split_to_float(const size_t m, const size_
                 mu[i] = fmax(mu[i], fabs(a[ix(i, j, m, q)]));
 
         // if(max(mu) == 0) -> return
-        double max = 0.0;
+        double overall_max = 0.0;
         for (const auto mu_i: mu)
-            max = fmax(max, mu_i);
-        if (max == 0.0)
+            overall_max = fmax(overall_max, mu_i);
+        if (overall_max == 0.0)
         {
             // printf("Early termination\n");
             return D;
         }
 
         // w = fl(...);
-        std::vector<float> w(m);
+        std::vector<double> w(m);
         for (size_t i = 0; i < m; ++i)
-            w[i] = exp2f(ceilf((float) log2f(mu[i])) + beta);
+            w[i] = exp2(ceil(log2(mu[i])) + beta);
 
         // S = repmat(w, 1, q);
-        std::vector<float> S(m * n);
-        for (size_t i = 0; i < m; ++i)
-            for (size_t j = 0; j < n; ++j)
-                S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
+        // We'll read from w instead
+        // std::vector<float> S(m * n);
+        // for (size_t i = 0; i < m; ++i)
+        //     for (size_t j = 0; j < n; ++j)
+        //         S[ix(i, j, m, n)] = w[ix(i, 0, m, 1)];
 
         // D{k} = fl((A + S) - S);
         // A = fl(A - D{k});
         D.resize(k, std::vector<float>(m * n));
-        for (size_t ij = 0; ij < m * n; ++ij)
+        for (size_t i = 0; i < m; ++i)
         {
-            D[k - 1][ij] = a[ij] + S[ij];
-            D[k - 1][ij] -= S[ij];
-            a[ij] -= D[k - 1][ij];
+            for (size_t j = 0; j < n; ++j)
+            {
+                const size_t ij = ix(i, j, m, n);
+                D[k - 1][ij] = a[ij] + w[i];
+                D[k - 1][ij] -= w[i];
+                a[ij] -= D[k - 1][ij];
+            }
         }
+
+        // DEBUG
+        // printf("k=%d.   w: %s (%.25f)\n", k, fp64_binary_representation(w[0]).c_str(), w[0]);
+        // printf("k=%d. max: %s (%.25f)\n", k, fp64_binary_representation(overall_max).c_str(), overall_max);
+        // printf("k=%d.   a: %s (%.25f)\n", k, fp64_binary_representation(a[0]).c_str(), a[0]);
+        // const auto Dkdouble = static_cast<double>(D[k-1][0]);
+        // printf("k=%d. D_k: %s (%.25f)\n", k, fp64_binary_representation(Dkdouble).c_str(), Dkdouble);
 
         // % Checking sparsity of D{k}
         // Omitted
@@ -494,7 +519,11 @@ template flop_counts matmul_ozaki<0>(double *a, double *b, double *c, size_t m, 
 template flop_counts matmul_ozaki<1>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 template flop_counts matmul_ozaki<2>(double *a, double *b, double *c, size_t m, size_t n, size_t p);
 
-template<int splitCount, int mergeCount, typename T, typename mulInputType, typename mulType, typename mulOutputType>
+// multKernel:
+// 0: matmulCUDACoresStream
+// 1: cuBLAS
+// 2: Ootomo
+template<int splitCount, int mergeCount, int multKernel, typename T, typename mulInputType, typename mulType, typename mulOutputType>
 flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t N,
                                    std::pair<int, int> mergePattern[mergeCount], bool transpose)
 {
@@ -505,7 +534,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
     size_t CSizeF = M * N * sizeof(mulOutputType);
     size_t CSize = M * N * sizeof(T);
 
-    PROFILE_FUNCTION_SEGMENT_START("allocate gpu");
+    PROFILE_FUNCTION_SEGMENT_START("allocate");
 
     mulInputType *deviceA, *deviceB, *deviceBTransposed;
     mulOutputType *deviceC;
@@ -530,7 +559,7 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
     PRINT_ON_ERROR(cudaMemcpy(deviceBFull, B, BSize, cudaMemcpyHostToDevice));
     CUDA_DEVICE_SYNCHRONIZE();
 
-    PROFILE_SEGMENTS_SWITCH("split");
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
     if constexpr(std::is_same<half, mulInputType>::value)
     {
         const double beta = ceil((log2((double)K) + 11) / 2.0);
@@ -569,10 +598,8 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         else 
             ozaki_split_to_float_fixed_cuda<splitCount><<<K, 32>>>(deviceBFull, deviceB, K, N, beta);
     }
+
     CUDA_DEVICE_SYNCHRONIZE();
-
-    PROFILE_SEGMENTS_SWITCH("matmul");
-
     cudaStream_t streams[mergeCount];
     for(int i = 0; i < mergeCount; i++)
         PRINT_ON_ERROR(cudaStreamCreate(&streams[i]));
@@ -581,12 +608,24 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
         size_t aIndex = mergePattern[i].first * M * K;
         size_t bIndex = mergePattern[i].second * K * N;
         size_t cIndex = i * M * N;
-        matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
+        if constexpr (multKernel == 0)
+            matmulCUDACoresStream<mulInputType, mulType, mulOutputType, 1>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N, streams[i]);
+        else if constexpr (multKernel == 1)
+        {
+            if constexpr (std::is_same<half, mulInputType>::value && std::is_same<float, mulOutputType>::value)
+                matmul_cuBLASMixed(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+            else if constexpr (std::is_same<float, mulOutputType>::value && std::is_same<float, mulOutputType>::value)
+                matmul_cuBLAS32(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+            else
+                throw std::runtime_error("Unsupported input/output types for cuBLAS kernel (Ozaki)");
+        }
+        else if constexpr (multKernel == 2 && std::is_same<float, mulInputType>::value && std::is_same<float, mulOutputType>::value)
+            matmul_Ootomo_v3(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+        else
+            throw std::runtime_error("Ozaki: invalid parameters");
     }
 
     CUDA_DEVICE_SYNCHRONIZE();
-
-    PROFILE_SEGMENTS_SWITCH("merge");
     merge_n_cuda<mergeCount, mulOutputType, T><<<DivRoundUp(M*N, 256), 256>>>(deviceC, deviceCMerged, M*N);
     PRINT_ON_ERROR(cudaGetLastError());
     CUDA_DEVICE_SYNCHRONIZE();
@@ -635,7 +674,7 @@ flop_counts matmul_ozaki<3>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, merges, false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -647,7 +686,7 @@ flop_counts matmul_ozaki<4>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < mergeCount; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, merges, false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -660,7 +699,7 @@ flop_counts matmul_ozaki<5>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -673,7 +712,7 @@ flop_counts matmul_ozaki<6>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 
@@ -687,7 +726,7 @@ flop_counts matmul_ozaki<7>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -700,7 +739,7 @@ flop_counts matmul_ozaki<8>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, float, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -713,7 +752,55 @@ flop_counts matmul_ozaki<9>(double *A, double *B, double *C, size_t M, size_t K,
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, double, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, double, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+}
+
+template<>
+flop_counts matmul_ozaki<10>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 1, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<11>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 1, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<12>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 4;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 2, double, float, float, float>(A, B, C, M, K, N, merges, false);
+}
+
+template<>
+flop_counts matmul_ozaki<13>(double *A, double *B, double *C, size_t M, size_t K, size_t N)
+{
+    constexpr int splitCount = 5;
+    constexpr int mergeCount = splitCount * splitCount;
+    std::pair<int, int> merges[mergeCount];
+    for(int i = 0; i < mergeCount; i++)
+        merges[i] = {i/splitCount, i%splitCount};
+    std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 2, double, float, float, float>(A, B, C, M, K, N, merges, false);
 }
 
 template<>
@@ -726,7 +813,7 @@ flop_counts matmul_ozaki_float<0>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -739,7 +826,7 @@ flop_counts matmul_ozaki_float<1>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, float, float>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }
 
 template<>
@@ -752,5 +839,5 @@ flop_counts matmul_ozaki_float<2>(float *A, float *B, float *C, size_t M, size_t
     for(int i = 0; i < splitCountSq; i++)
         merges[i] = {i/splitCount, i%splitCount};
     std::sort(std::begin(merges), std::end(merges), compareByDescendingSum);
-    return matmul_ozaki_optimized<splitCount, mergeCount, float, half, half, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
+    return matmul_ozaki_optimized<splitCount, mergeCount, 0, float, half, half, half>(A, B, C, M, K, N, &merges[splitCountSq - mergeCount], false);
 }

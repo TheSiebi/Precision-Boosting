@@ -51,7 +51,7 @@ static void profiler_segments_print_children_json(struct profile_segment *parent
         double totalTime = (double)segment->totalTime/1e9;
         double childTime = (double)segment->childTime/1e9;
         double selfTime = totalTime - childTime;
-        char buffer[32];
+        char buffer[48];
         // We only care about segments at level 1
         if (level == 1) {
             snprintf(buffer, sizeof(buffer), "%s,%lf,", segment->name, selfTime);

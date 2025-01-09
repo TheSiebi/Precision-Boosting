@@ -83,7 +83,7 @@ struct precisionMeasurement
 };
 
 template<class T>
-bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng);
+bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, matmul_variant<T> *function, LCG rng);
 
 template<class T>
 void timeFunction(struct matmul_variant<T> *function, char *path, LCG rng);

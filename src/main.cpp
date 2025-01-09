@@ -67,21 +67,39 @@ matmul_variant<float> matmulVariants32[] =
     },
     {
         .function = matmul_simpleMarkidis<5, 1, false>,
-        .name = "Simple Markidis v5",
+        .name = "Simple Markidis v4 acc:Cuda",
         .description = "Simple markidis with shared memory, vectorized loads and accumulation outside tensor cores",
-        .highestPerforming = true,
+        .highestPerforming = false,
     },
     {
         .function = matmul_simpleMarkidis<5, 1, true>,
-        .name = "Simple Markidis v5 scaled",
+        .name = "Simple Markidis v4 acc:Cuda, scaled",
         .description = "Simple markidis with shared memory, vectorized loads, accumulation outside tensor cores and split scaling",
-        .highestPerforming = true,
+        .highestPerforming = false,
     },
 #if SM_VERSION >= 800
     {
-        .function = matmul_simpleMarkidis<6, 1, true>,
-        .name = "Simple Markidis v6",
+        .function = matmul_simpleMarkidis<6, 1, false>,
+        .name = "Simple Markidis v5 acc:Cuda",
         .description = "Simple markidis with shared memory, vectorized loads, double buffering, accumulation outside tensor cores and split scaling",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_simpleMarkidis<6, 1, true>,
+        .name = "Simple Markidis v5 acc:Cuda, scaled",
+        .description = "Simple markidis with shared memory, vectorized loads, double buffering, accumulation outside tensor cores and split scaling",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_simpleMarkidis<7, 1, false>,
+        .name = "Simple Markidis v5",
+        .description = "Simple markidis with shared memory, vectorized loads, double buffering and split scaling",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_simpleMarkidis<7, 1, true>,
+        .name = "Simple Markidis v5 scaled",
+        .description = "Simple markidis with shared memory, vectorized loads, double buffering and split scaling",
         .highestPerforming = true,
     },
 #endif
@@ -112,7 +130,13 @@ matmul_variant<float> matmulVariants32[] =
     {
         .function = matmul_Ootomo_v2,
         .name = "Ootomo v2",
-        .description = "Same as Ootomo_v1 but with better data reuse",
+        .description = "Same as Ootomo_v1 but with better data reuse. Accumulation inside tensor cores",
+        .highestPerforming = false,
+    },
+    {
+        .function = matmul_Ootomo_v3,
+        .name = "Ootomo v3",
+        .description = "Same as Ootomo_v2 but with accumulation outside tensor cores",
         .highestPerforming = true,
     },
     {
@@ -158,6 +182,12 @@ matmul_variant<float> matmulVariants32[] =
         .highestPerforming = false,
     },
     {
+        .function = matmul_simpleMarkidis_float<7>,
+        .name = "Ootomo CUBLAS",
+        .description = "Like Ootomo v2 but without a merged kernel and 3 separate CUBLAS invocations",
+        .highestPerforming = true,
+    },
+    {
         .function = matmul_cuda<float, float, 1, false>,
         .name = "matmul CUDA cores v1",
         .description = "CUDA core fp32 matrix multiplication with warptiling",
@@ -173,7 +203,7 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_ozaki_float<0>,
         .name = "Matmul Ozaki float v0",
         .description = "Ozaki FP32 using FP16.",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_ozaki_float<1>,
@@ -232,7 +262,7 @@ matmul_variant<double> matmulVariants64[] =
     {
         .function = matmul_ozaki<5>,
         .name = "Matmul Ozaki float 36 terms",
-        .description = "Ozaki FP64 using FP32 7 splits and 36 matmuls",
+        .description = "Ozaki FP64 using FP32 6 splits and 36 matmuls",
         .highestPerforming = true,
     },
     {
@@ -258,6 +288,30 @@ matmul_variant<double> matmulVariants64[] =
         .name = "Matmul Ozaki half 36 terms",
         .description = "Ozaki FP64 using FP16 6 splits and 36 matmuls",
         .highestPerforming = false,
+    },
+    {
+        .function = matmul_ozaki<10>,
+        .name = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
+        .description = "Ozaki v10 FP32->FP64, 4spl 16mm, cuBLAS",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_ozaki<11>,
+        .name = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
+        .description = "Ozaki v11 FP32->FP64, 5spl 25mm, cuBLAS",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_ozaki<12>,
+        .name = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
+        .description = "Ozaki v12 FP32->FP64, 4spl 16mm, Ootomo",
+        .highestPerforming = true,
+    },
+    {
+        .function = matmul_ozaki<13>,
+        .name = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
+        .description = "Ozaki v13 FP32->FP64, 5spl 25mm, Ootomo",
+        .highestPerforming = true,
     },
     {
         .function = matmul_Ootomo_double_v0,
@@ -305,7 +359,7 @@ matmul_variant<double> matmulVariants64[] =
         .function = matmul_simpleMarkidis_double<6>,
         .name = "Hybrid double: 16 terms, 3 double & 13 float acc",
         .description = "Split 4 half, 16 float multiply & 13 float accumulate & 3 most significant terms double accumulate (CUDA & TENSOR CORES)",
-        .highestPerforming = true,      
+        .highestPerforming = false,      
     },
     {
         .function = matmul_simpleMarkidis_double<7>,

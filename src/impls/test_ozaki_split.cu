@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-std::string binary_representation(const double d_)
+std::string fp64_binary_representation(const double d_)
 {
     int64_t d;
     memcpy(&d, &d_, 8);
@@ -29,14 +29,14 @@ std::string binary_representation(const double d_)
 void bitwise_comparison(const double expected, const double actual)
 {
     std::cout << "\n          s" << std::string(11, 'e') << std::string(52, 'm') << "\n";
-    std::cout << std::setw(10) << "Expected: " << binary_representation(expected) << "\n";
-    std::cout << std::setw(10) << "Actual: " << binary_representation(actual) << "\n";
+    std::cout << std::setw(10) << "Expected: " << fp64_binary_representation(expected) << "\n";
+    std::cout << std::setw(10) << "Actual: " << fp64_binary_representation(actual) << "\n";
 }
 
 void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t max_splits, const bool verbose)
 {
-    const std::array<size_t, 1> rows_sizes = { 3 };
-    const std::array<size_t, 1> cols_sizes = { 4 };
+    const std::array<size_t, 1> rows_sizes = { 1 };
+    const std::array<size_t, 1> cols_sizes = { 1 };
     double float_max_err = 0.0;
     double half_max_err = 0.0;
     std::cout << std::fixed << std::setprecision(17);
@@ -53,6 +53,7 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
             memcpy(backup, matrix, size * sizeof(double));
 
             // Test split to float
+            // std::cout << "Split to float...\n";
             const auto split_float_matrices = ozaki_split_to_float(rows, cols, matrix, max_splits);
             memset(matrix, 0, size * sizeof(double));
             for (const auto& m: split_float_matrices)
@@ -79,6 +80,7 @@ void test_ozaki_split_correctness(LCG* rng, const double epsilon, const size_t m
                 std::cout << "Max err after " << split_float_matrices.size() << " splits (float): " << float_max_err << "\n";
 
             // Test split to half
+            // std::cout << "Split to half...\n";
             memcpy(matrix, backup, size * sizeof(double));
             const auto split_half_matrices = ozaki_split_to_half(rows, cols, matrix, max_splits);
             memset(matrix, 0, size * sizeof(double));

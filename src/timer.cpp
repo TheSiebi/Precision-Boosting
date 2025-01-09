@@ -122,8 +122,9 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
 }
 
 template<class T>
-bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
+bool timeRun(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, matmul_variant<T> *function, LCG rng)
 {
+    MatMul<T> func = function->function;
     // A * B = C
     // A is m*k (m rows, k columns)
     // B is k*n (k rows, n columns)
@@ -159,7 +160,7 @@ bool timeRun(double *timings, flop_counts *counts, int iterations, int input_typ
 
     bool sanityCheck = true;
     if (-1 != test_matmul_correctness_probabilistic(&rng, A, B, C, M, K, N)) {
-        printf("Warning: Sanity check failed!\n");
+        printf("Warning: Sanity check failed for %s!\n", function->name);
         sanityCheck = false;
     }
 
@@ -170,8 +171,8 @@ bool timeRun(double *timings, flop_counts *counts, int iterations, int input_typ
     return sanityCheck;
 }
 
-template bool timeRun<float>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<float> func, LCG rng);
-template bool timeRun<double>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, MatMul<double> func, LCG rng);
+template bool timeRun<float>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, matmul_variant<float> *function, LCG rng);
+template bool timeRun<double>(double *timings, flop_counts *counts, int iterations, int input_type, int warmupIterations, size_t M, size_t K, size_t N, matmul_variant<double> *function, LCG rng);
 
 template<class T>
 void measurePrecision(int input_type, double *residuals, int iterations, size_t M, size_t K, size_t N, MatMul<T> func, LCG rng)
@@ -224,8 +225,8 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     printf("Benchmark %s\n", function->name);
     // information set by makefile?:
     // flags, compiler, cpu model
-    int powerOfMaxSize = 19;
-    int powerOfMinSize = 4;
+    constexpr int powerOfMaxSize = std::is_same<T, double>::value ? 13 : 14;
+    int powerOfMinSize = 7;
     int numSizes = powerOfMaxSize - powerOfMinSize + 1;
     const int perfTestInputType = 1;
     const int numInputTypes = 5;
@@ -258,6 +259,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         iterationsPerConfig[i] = maxPerfIterationsPerConfig;
         precisionIterationsPerInputType[i] = maxIterationsPerInputType;
 
+        /*
         if (total_pow >= 36) {
             iterationsPerConfig[i] = std::min(1, maxPerfIterationsPerConfig);
         } else if (total_pow >= 33) {
@@ -270,11 +272,12 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
         } else if (total_pow >= 30) {
             precisionIterationsPerInputType[i] = std::min(64, maxIterationsPerInputType);
         } else if (total_pow >= 27) {
-            precisionIterationsPerInputType[i] = std::min(1024, maxIterationsPerInputType);
+            precisionIterationsPerInputType[i] = std::min(256, maxIterationsPerInputType);
         }
+        */
 
         flop_counts counts;
-        bool sanityCheck = timeRun<T>(&timings[i * maxPerfIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, M, K, N, function->function, rng);
+        bool sanityCheck = timeRun<T>(&timings[i * maxPerfIterationsPerConfig], &counts, iterationsPerConfig[i], perfTestInputType, warmupIterations, M, K, N, function, rng);
         
         char* profile_output = profiler_segments_print_json();
         size_t len = strlen(profile_output);

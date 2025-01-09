@@ -473,6 +473,138 @@ __global__ void matmul_v2_kernel(const float *A, const float *B, float *C, size_
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> dbFrag[N_WMMA_COLS_PER_WARP];
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> dcFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+
+    for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
+    {
+        for (int j = 0; j < N_WMMA_COLS_PER_WARP; j++)
+        {
+            wmma::fill_fragment(cFrag[i][j], 0.0f);
+            wmma::fill_fragment(dcFrag[i][j], 0.0f);
+        }
+    }
+
+    // Loads are vectorized and each thread will load 4 elements into SMEM
+    const int elemsPerThread = 4;
+    // Calculate indices that this thread will load from GMEM to SMEM
+    // Note that for coalescing, it's important that consecutive threadIDs
+    // access consecutive memory addresses
+    const int innerRowA = threadIdx.x / (BK / elemsPerThread);
+    const int innerColA = threadIdx.x % (BK / elemsPerThread);
+    const int innerRowB = threadIdx.x / (BN / elemsPerThread);
+    const int innerColB = threadIdx.x % (BN / elemsPerThread);
+    // complete #rows that gets loaded in one loading iteration
+    const int rowStrideA = elemsPerThread * blockDim.x / BK;
+    const int rowStrideB = elemsPerThread * blockDim.x / BN;
+
+    const int loadIterationsA = BM * BK / (elemsPerThread * blockDim.x);
+    const int loadIterationsB = BK * BN / (elemsPerThread * blockDim.x);
+
+    // Loop over all block tiles
+    for (int bkIdx = 0; bkIdx < K; bkIdx += BK)
+    {
+        // populate SMEM cache
+        for (int i = 0; i < loadIterationsA; i++)
+        {
+            loadAndSplit<float4, float>(A, K, innerRowA, i * rowStrideA, innerColA, As, dAs, BK);
+        }
+        for (int i = 0; i < loadIterationsB; i++)
+        {
+            loadAndSplit<float4, float>(B, N, innerRowB, i * rowStrideB, innerColB, Bs, dBs, BN);
+        }
+
+        __syncthreads();
+
+        // advance blocktile
+        A += BK;
+        B += BK * N;
+
+        // start of data belonging to respective warp
+        int warpOffsetA = warpRow * WM * BK;
+        int warpOffsetB = warpCol * WN;
+        
+        // Warning: if this is removed and the compiler unrolls this loop, register usage for this kernel is too high
+        // and it can't be launched
+        #pragma unroll 1
+        for (int chunk = 0; chunk < CHUNK_K; chunk++)
+        {   
+            for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+            {
+                wmma::load_matrix_sync(bFrag[tileCol], Bs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+                wmma::load_matrix_sync(dbFrag[tileCol], dBs + warpOffsetB + tileCol * WMMA_N + chunk * WMMA_K * BN, BN);
+            }
+            // calculate mmul
+            for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+            {
+                wmma::load_matrix_sync(aFrag, As + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+                wmma::load_matrix_sync(daFrag, dAs + warpOffsetA + tileRow * WMMA_M * BK + chunk * WMMA_K, BK);
+                for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+                {
+                    wmma::mma_sync(cFrag[tileRow][tileCol], aFrag, bFrag[tileCol], cFrag[tileRow][tileCol]);
+                    
+                    // matrices for error correction can be directly accumulated in the tensor core
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], daFrag, bFrag[tileCol], dcFrag[tileRow][tileCol]);
+                    wmma::mma_sync(dcFrag[tileRow][tileCol], aFrag, dbFrag[tileCol], dcFrag[tileRow][tileCol]);
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // Store results back to C matrix
+    float *warpC = &C[warpRow * WM * N + warpCol * WN];
+    for (int tileRow = 0; tileRow < N_WMMA_ROWS_PER_WARP; tileRow++)
+    {
+        for (int tileCol = 0; tileCol < N_WMMA_COLS_PER_WARP; tileCol++)
+        {   
+            // perform merge according to Ootomo paper
+            for (int i = 0; i < cFrag[tileRow][tileCol].num_elements; i++)
+            {
+                cFrag[tileRow][tileCol].x[i] += dcFrag[tileRow][tileCol].x[i] / 2048.0f;
+            }
+
+            wmma::store_matrix_sync(warpC + tileCol * WMMA_N, cFrag[tileRow][tileCol], N, wmma::mem_row_major);
+        }
+        warpC += WMMA_M * N;
+    }
+}
+
+template <const int BM, const int BN, const int BK, const int WM, const int WN, const int CHUNK_K,
+          const int N_WARP_ROWS_PER_BLOCK,
+          const int N_WARP_COLS_PER_BLOCK,
+          const int N_WMMA_ROWS_PER_WARP,
+          const int N_WMMA_COLS_PER_WARP>
+__global__ void matmul_v3_kernel(const float *A, const float *B, float *C, size_t M, size_t K, size_t N)
+{
+    using namespace nvcuda;
+
+    // allocate space for the current blocktile in shared memory
+    __shared__ half As[BM * BK];
+    __shared__ half Bs[BK * BN];
+    __shared__ half dAs[BM * BK];
+    __shared__ half dBs[BK * BN];
+
+    // Move blocktile to beggining of A's row and B's column
+    const int cRow = blockIdx.x;
+    const int cCol = blockIdx.y;
+    A += cRow * BM * K;
+    B += cCol * BN;
+    C += cRow * BM * N + cCol * BN;
+
+    // warpID in threadBlock
+    const int warpID = threadIdx.x / WARP_SIZE;
+    // thread LaneID in warp
+    // const int laneID = threadIdx.x % WARP_SIZE;
+    // The indices this warp has in the block tile
+    const int warpRow = warpID / N_WARP_COLS_PER_BLOCK;
+    const int warpCol = warpID % N_WARP_COLS_PER_BLOCK;
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> aFrag;
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> daFrag;
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> bFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> dbFrag[N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> cFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> dcFrag[N_WMMA_ROWS_PER_WARP][N_WMMA_COLS_PER_WARP];
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> tmpFrag;
 
     for (int i = 0; i < N_WMMA_ROWS_PER_WARP; i++)
@@ -625,7 +757,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
         CUDA_DEVICE_SYNCHRONIZE();
     }
 
-    PROFILE_SEGMENTS_SWITCH("matmul");
+    PROFILE_SEGMENTS_SWITCH("split & matmul & merge");
     if constexpr(version == 0)
     {
         if (M < 256 | K < 256 | N < 256)
@@ -659,7 +791,7 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
             }
         }
     } 
-    else if constexpr(version == 1 || version == 2)
+    else if constexpr(version == 1 || version == 2 || version == 3)
     {   
         if (M < 256 | K < 256 | N < 256)
         {
@@ -674,9 +806,14 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
                 matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                         <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
             } 
-            else 
+            else if (version == 2)
             {
                 matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+            } 
+            else 
+            {
+                matmul_v3_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                         <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
             }
             PRINT_ON_ERROR(cudaGetLastError());
@@ -694,9 +831,14 @@ void matmul_Ootomo(float *A, float *B, float *C, size_t M, size_t K, size_t N)
                 matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                         <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
             } 
-            else 
+            else if (version == 2)
             {
                 matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
+            } 
+            else 
+            {
+                matmul_v3_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
                         <<<blocks, p.threadsPerBlock>>>(deviceAFull, deviceBFull, deviceCFull, M, K, N);
             }
             PRINT_ON_ERROR(cudaGetLastError());
@@ -789,6 +931,23 @@ flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, size_t M, size_t K, s
     return counts;
 }
 
+/**
+ * flops16:
+ * 3*(2*M*K*N) (3 matmuls)
+ * 
+ * flops32:
+ * 2*M*K + 2*K*N (splitting A and B)
+ * + N*M (accumulating outside tensor cores)
+ * + 2*N*M (merging into C)
+ * 
+ * NOTE: merging/accumulation flops32 should double-checked again
+ */
+flop_counts matmul_Ootomo_v3(float *A, float *B, float *C, size_t M, size_t K, size_t N)
+{
+    matmul_Ootomo<3>(A, B, C, M, K, N);
+    flop_counts counts = {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
+    return counts;
+}
 
 template<int version>
 void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, size_t N) 

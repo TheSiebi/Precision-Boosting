@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "timer.h"
 #include "rand.h"
+#include "cuda_fp16.h"
 
 flop_counts matmul_reference32(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_reference64(double *A, double *B, double *C, size_t M, size_t K, size_t N);
@@ -34,10 +35,12 @@ flop_counts matmul_basic_Ootomo_v0(float *A, float *B, float *C, size_t M, size_
 flop_counts matmul_Ootomo_v0(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_Ootomo_v1(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_Ootomo_v2(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+flop_counts matmul_Ootomo_v3(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_Ootomo_double_v0(double *A, double *B, double *C, size_t M, size_t K, size_t N);
 
 flop_counts matmul_cuBLAS32(float *A, float *B, float *C, size_t M, size_t K, size_t N);
 flop_counts matmul_cuBLAS64(double *A, double *B, double *C, size_t M, size_t K, size_t N);
+flop_counts matmul_cuBLASMixed(half *A, half *B, float *C, size_t M, size_t K, size_t N);
 
 template <typename T>
 void transposeMatrix(T *A, T *A_T, size_t M, size_t K);
