@@ -231,7 +231,7 @@ void timeFunction(matmul_variant<T> *function, char *path, LCG rng) {
     const int perfTestInputType = 1;
     const int numInputTypes = 5;
     const int maxPerfIterationsPerConfig = 1;
-    const int maxPrecIterationsPerConfig = 256 * numInputTypes;
+    const int maxPrecIterationsPerConfig = 8 * numInputTypes;
     const int maxIterationsPerInputType = maxPrecIterationsPerConfig / numInputTypes;
     int *iterationsPerConfig = (int*) calloc(numSizes, sizeof(*iterationsPerConfig));
     int *precisionIterationsPerInputType = (int*) calloc(numSizes, sizeof(*precisionIterationsPerInputType));

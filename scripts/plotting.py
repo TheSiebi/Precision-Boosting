@@ -249,7 +249,7 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
     # -- Comparison Plot specific setup --
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
     plt.gca().set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
-    all_sizes = list(set([size for d in data for size in [run['N'] for run in d['runs']]])) # Assuming square matrices
+    all_sizes = list(set([size for d in data for size in [run['K'] for run in d['runs']]])) # Assuming square matrices
     plt.xticks(all_sizes, all_sizes) # Force x-ticks to match union of all data
 
     # Plot horizontal line for peak theoretical performance of machine
@@ -272,7 +272,7 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
             matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["split & matmul & merge"] for run in runs]
         else:
             matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["matmul"] for run in runs]
-        sizes = [run['N'] for run in runs] # Only use square matrices for now
+        sizes = [run['K'] for run in runs] # Only use square matrices for now (Or M = N = 16)
         metrics = [compute_metrics(run['timings']) for run in runs]
         median_timings = [metric[0] for metric in metrics]
         ci_lower = [metric[4] for metric in metrics]
@@ -431,7 +431,7 @@ def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder
         # -- Comparison Plot specific setup --
         line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
         ax.set_prop_cycle(marker=['o', '^', 'v', 's', 'D', 'p'])
-        #all_sizes = list(set([size for d in data for run in d['runs'] if 'precMs' in run for size in [run['N']]])) # Assuming square matrices
+        #all_sizes = list(set([size for d in data for run in d['runs'] if 'precMs' in run for size in [run['K']]])) # Assuming square matrices
 
         for i in range(len(data)):
             d = data[i]
@@ -444,7 +444,7 @@ def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder
             all_run_residuals = [m[metric_key] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
 
             avg_residual = [np.mean(np.array(run_residual)) for run_residual in all_run_residuals]
-            sizes = [run['N'] for run in runs]
+            sizes = [run['K'] for run in runs]
             residuals = [avg_residual[i] for i in range(len(runs))]
             label = d['meta']['function name']
             # Add compiler info if contained in data
@@ -629,7 +629,7 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
 
     for idx, (ax, dataset) in enumerate(zip(axes, data)):
         runs = dataset['runs']
-        sizes = [run['N'] for run in runs]  # Only use square matrices for now
+        sizes = [run['K'] for run in runs]  # Only use square matrices for now (Or M=N=16)
         profile_data = [parse_profile_text(run['profile_output']) for run in runs]
 
         # Normalize profile data to values between 0 and 1
