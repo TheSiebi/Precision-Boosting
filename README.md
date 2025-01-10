@@ -2,7 +2,7 @@
 
 **Marc Matter, Max Striebel, Michael Mörschell, Michael Siebenmann, Tynan Richards**
 
-> This is a course project for ETH's Design of Parallel and High-Performance Computing (DPHPC) course. We implement fp64 matrix multiplication using fp16 and fp32 tensor cores.
+> This is a course project for ETH's Design of Parallel and High-Performance Computing (DPHPC) course. We approximate FP64 and FP32 matrix multiplication using FP16 and FP32 Tensor Cores and evaluate both the performance and precision of various schemes.
 
 ## Usage
 The build system is currently configured to operate on Unix machines.
@@ -12,7 +12,7 @@ To **build** use the command: `make build`
 To **run** use the command: `make run` (by default this will validate the correctness of all implementation versions specified in the main function of main.c)
 
 To **generate** performance and speedup **plots** use the command: `make plot`
-Plot generation uses Python 3.10.12 and requires matplotlib, numpy and scipy.
+Plot generation uses Python 3.12 and requires matplotlib and numpy.
 
 ## CUDA Installation (WSL2)
 
