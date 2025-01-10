@@ -131,7 +131,7 @@ matmul_variant<float> matmulVariants32[] =
         .function = matmul_Ootomo_v2,
         .name = "Ootomo v2",
         .description = "Same as Ootomo_v1 but with better data reuse. Accumulation inside tensor cores",
-        .highestPerforming = false,
+        .highestPerforming = true,
     },
     {
         .function = matmul_Ootomo_v3,

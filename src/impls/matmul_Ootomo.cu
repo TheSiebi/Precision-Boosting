@@ -950,6 +950,72 @@ flop_counts matmul_Ootomo_v3(float *A, float *B, float *C, size_t M, size_t K, s
 }
 
 template<int version>
+flop_counts matmul_Ootomo_noMemAlloc(float *A, float *B, float *C, size_t M, size_t K, size_t N) 
+{
+    assert((M % 16) == 0);
+    assert((K % 16) == 0);
+    assert((N % 16) == 0);
+
+    if constexpr(version == 1 || version == 2 || version == 3)
+    {   
+        if (M < 256 | K < 256 | N < 256)
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<0>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            if (version == 1)
+            {
+                matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else if (version == 2)
+            {
+                matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else 
+            {
+                matmul_v3_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            }
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
+        else
+        {
+            constexpr struct matmulTemplateArgsTensor p = getMatmulTemplateArgsTensor<2>();
+            assert(M % p.BM == 0);
+            assert(N % p.BN == 0);
+            assert(K % p.BK == 0);
+
+            dim3 blocks(M / p.BM, N / p.BN);
+            if (version == 1)
+            {
+                matmul_v1_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else if (version == 2)
+            {
+                matmul_v2_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            } 
+            else 
+            {
+                matmul_v3_kernel<p.BM, p.BN, p.BK, p.WM, p.WN, p.CHUNK_K, p.N_WARP_ROWS_PER_BLOCK, p.N_WARP_COLS_PER_BLOCK, p.N_WMMA_ROWS_PER_WARP, p.N_WMMA_COLS_PER_WARP>
+                        <<<blocks, p.threadsPerBlock>>>(A, B, C, M, K, N);
+            }
+            PRINT_ON_ERROR(cudaGetLastError());
+        }
+    }
+
+    return {6L*M*K*N, 2L*M*K + 2L*K*N + 3L*N*M, 0L};
+}
+
+template flop_counts matmul_Ootomo_noMemAlloc<3>(float *A, float *B, float *C, size_t M, size_t K, size_t N);
+
+template<int version>
 void matmul_Ootomo_double(double *A, double *B, double *C, size_t M, size_t K, size_t N) 
 {
     assert((M % 16) == 0);

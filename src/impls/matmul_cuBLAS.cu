@@ -62,6 +62,36 @@ flop_counts matmul_cuBLAS32(float *h_A, float *h_B, float *h_C, size_t M, size_t
     return counts;
 }
 
+flop_counts matmul_cuBLAS32_noMemAlloc(float *A, float *B, float *C, size_t M, size_t K, size_t N) {
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+
+    cublasHandle_t handle;
+    cublasStatus_t status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("CUBLAS initialization failed. %s: %s\n",
+                cublasGetStatusName(status), cublasGetStatusString(status));
+        flop_counts counts = {0L, 0L, 0L};
+        return counts;
+    }
+
+    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                         N, M, K,
+                         &alpha,
+                         B, N,
+                         A, K,
+                         &beta,
+                         C, N);
+
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("CUBLAS multiplication failed\n");
+    }
+    cublasDestroy(handle);
+
+    flop_counts counts = {0L, 2L*M*K*N, 0L};
+    return counts;
+}
+
 flop_counts matmul_cuBLAS64(double *h_A, double *h_B, double *h_C, size_t M, size_t K, size_t N) {
     const double alpha = 1.0f;
     const double beta = 0.0f;

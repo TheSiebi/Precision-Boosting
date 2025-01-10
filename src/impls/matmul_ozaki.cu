@@ -627,12 +627,12 @@ flop_counts matmul_ozaki_optimized(T *A, T *B, T *C, size_t M, size_t K, size_t 
             if constexpr (std::is_same<half, mulInputType>::value && std::is_same<float, mulOutputType>::value)
                 matmul_cuBLASMixed(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
             else if constexpr (std::is_same<float, mulOutputType>::value && std::is_same<float, mulOutputType>::value)
-                matmul_cuBLAS32(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+                matmul_cuBLAS32_noMemAlloc(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
             else
                 throw std::runtime_error("Unsupported input/output types for cuBLAS kernel (Ozaki)");
         }
         else if constexpr (multKernel == 2 && std::is_same<float, mulInputType>::value && std::is_same<float, mulOutputType>::value)
-            matmul_Ootomo_v3(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
+            matmul_Ootomo_noMemAlloc<3>(&deviceA[aIndex], &deviceB[bIndex], &deviceC[cIndex], M, K, N);
         else
             throw std::runtime_error("Ozaki: invalid parameters");
     }
