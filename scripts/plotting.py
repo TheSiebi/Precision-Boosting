@@ -273,7 +273,7 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
         else:
             matmul_fractions = [parse_profile_text_fractions(run['profile_output'])["matmul"] for run in runs]
         sizes = [run['K'] for run in runs] # Only use square matrices for now (Or M = N = 16)
-        metrics = [compute_metrics(run['timings']) for run in runs]
+        metrics = [compute_metrics(run['timings'], True) for run in runs]
         median_timings = [metric[0] for metric in metrics]
         ci_lower = [metric[4] for metric in metrics]
         ci_upper = [metric[5] for metric in metrics]
@@ -308,7 +308,7 @@ def generate_matmul_performance_comparison_plot(data: List[dict], input_folder: 
     plt.close()
 
 def generate_precision_plots(data: List[dict], input_folder: str):
-    generate_precision_plots_for_metric(data, input_folder, 'residuals', 'Mean Relative Error (Capped at 1)')
+    generate_precision_plots_for_metric(data, input_folder, 'residuals', 'Mean Relative Error')
 
 def generate_precision_plots_for_metric(data: List[dict], input_folder: str, metric_key: str, metric_name: str):
     """
@@ -373,7 +373,7 @@ def generate_precision_plots_for_metric(data: List[dict], input_folder: str, met
 
 
 def generate_precision_comparison_plot(data: List[dict], input_folder: str):
-    generate_precision_comparison_plot_for_metric(data, input_folder, 'residuals', 'Mean Relative Error (Capped at 1)')
+    generate_precision_comparison_plot_for_metric(data, input_folder, 'residuals', 'Mean Relative Error')
 
 def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder: str, metric_key: str, metric_name: str):
     """
@@ -390,7 +390,7 @@ def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder
 
     num_plots = len(unique_input_types)
     width_in_inches = 6.77*2  # Two-column width of A4 in inches
-    height_per_plot = 2*2     # Approximate height per subplot in inches
+    height_per_plot = 3.2     # Approximate height per subplot in inches
     fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=True)
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
 
@@ -443,16 +443,20 @@ def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder
             
             all_run_residuals = [m[metric_key] for run in runs for m in run['precMs'] if m['input_type'] == input_type]
 
-            avg_residual = [np.mean(np.array(run_residual)) for run_residual in all_run_residuals]
+            metrics = [compute_metrics(run_residuals, False) for run_residuals in all_run_residuals]
+            median_residuals = [metric[0] for metric in metrics]
+            ci_lower_bounds = [metric[4] for metric in metrics]
+            ci_upper_bounds = [metric[5] for metric in metrics]
+
             sizes = [run['K'] for run in runs]
-            residuals = [avg_residual[i] for i in range(len(runs))]
             label = d['meta']['function name']
             # Add compiler info if contained in data
             if 'compiler' in d['meta']:
                 label += f" ({d['meta']['compiler']})"
             if 'flags' in d['meta']:
                 label += f" {d['meta']['flags']}"
-            p, = ax.plot(sizes, residuals, color=line_colors[i%len(line_colors)], label=label)
+            p, = ax.plot(sizes, median_residuals, color=line_colors[i%len(line_colors)], label=label)
+            ax.fill_between(sizes, ci_lower_bounds, ci_upper_bounds, color=line_colors[i%len(line_colors)], alpha=0.25, edgecolor=None)
             if idx == 0:
                 handles.append(p)
                 labels.append(label)
@@ -461,7 +465,7 @@ def generate_precision_comparison_plot_for_metric(data: List[dict], input_folder
 
     # Add a common legend below the x-axis label
     fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.05), ncols=len(labels), fontsize=10)
-    fig.text(0.5, 0.15, 'Matrix size m : matmul-(16,m,16)', ha='center')
+    fig.text(0.5, 0.18, 'Matrix size m : matmul-(16,m,16)', ha='center')
     # Add a common legend
     #handles, labels = axes[0].get_legend_handles_labels()
     #fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.5), ncol=len(profile_data[0].keys()), fontsize=10)
@@ -620,7 +624,7 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
     """
     num_plots = len(data)
     width_in_inches = 6.77*2  # Two-column width of A4 in inches
-    height_per_plot = 2*2     # Approximate height per subplot in inches
+    height_per_plot = 2.9     # Approximate height per subplot in inches
     fig, axes = plt.subplots(1, num_plots, figsize=(width_in_inches, height_per_plot), sharey=True)
     line_colors = ['#FFBF00', '#FF7F50', '#DE3163', '#51de94', '#40E0D0', '#6495ED', '#0022b8', '#000000']
 
@@ -655,6 +659,10 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_visible(False)
 
+        if idx != 0:
+            # Disable y ticks of axis
+            ax.yaxis.set_tick_params(size=0)
+
         # Add horizontal lines
         ax.grid(axis='y', color='white', linestyle='-')
 
@@ -674,7 +682,7 @@ def generate_profile_comparison_plot(data: List[dict], input_folder: str):
     handles = [plt.Line2D([0], [0], color=color, lw=6, label=label) for label, color in all_labels]
 
     fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, 0.05), ncol=len(all_labels), fontsize=10)
-    fig.text(0.5, 0.15, 'Matrix size m : matmul-(m,m,m)', ha='center')
+    fig.text(0.5, 0.18, 'Matrix size m : matmul-(m,m,m)', ha='center')
 
     # Add a common legend
     #handles, labels = axes[0].get_legend_handles_labels()
